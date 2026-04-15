@@ -109,9 +109,12 @@ select,input[type=text]{background:#08080f;border:1px solid #2a2a44;border-radiu
         <button class="btn sm" id="btn-enter" style="display:none;background:#1a2a0a;border-color:#4a8a1a;color:#8aff4a" onclick="openLoc()">⚔ Enter</button>
       </div>
     </div>
-    <div id="map-canvas-wrap">
+    <div id="map-canvas-wrap" style="flex:1;min-height:100px;max-height:calc(100vh - 320px)">
       <canvas id="cv-world"></canvas>
     </div>
+    <!-- world log -->
+    <div id="wlog" class="log" style="height:130px;flex-shrink:0;border-radius:6px;background:#050510;margin-bottom:4px"></div>
+
     <!-- end turn bar: only visible when steps = 0 -->
     <div id="end-turn-bar" style="display:none;flex-shrink:0;background:#0f0f1e;border:1px solid #6a4aff;border-radius:8px;padding:10px 16px;align-items:center;justify-content:space-between;gap:10px">
       <div>
@@ -123,12 +126,17 @@ select,input[type=text]{background:#08080f;border:1px solid #2a2a44;border-radiu
         <button class="btn prim" onclick="endWTurn()" style="padding:6px 20px">End Turn ▶</button>
       </div>
     </div>
-    <div id="map-footer">
-      <button class="btn sm" onclick="mv(0,-1)">▲</button>
-      <button class="btn sm" onclick="mv(-1,0)">◄</button>
-      <button class="btn sm" onclick="mv(0,1)">▼</button>
-      <button class="btn sm" onclick="mv(1,0)">►</button>
-      <span class="muted" style="margin-left:4px">arrow keys · scroll zoom</span>
+    <div id="map-footer" style="flex-shrink:0;display:flex;align-items:center;gap:4px;padding:4px 6px;height:auto">
+      <!-- d-pad: compact 3x3 grid, fixed size, won't stretch layout -->
+      <div style="display:grid;grid-template-columns:repeat(3,40px);grid-template-rows:repeat(2,40px);gap:3px;flex-shrink:0">
+        <div></div>
+        <button class="btn" onclick="mv(0,-1)" style="font-size:18px;padding:0;width:40px;height:40px;display:flex;align-items:center;justify-content:center">▲</button>
+        <div></div>
+        <button class="btn" onclick="mv(-1,0)" style="font-size:18px;padding:0;width:40px;height:40px;display:flex;align-items:center;justify-content:center">◄</button>
+        <button class="btn" onclick="mv(0,1)" style="font-size:18px;padding:0;width:40px;height:40px;display:flex;align-items:center;justify-content:center">▼</button>
+        <button class="btn" onclick="mv(1,0)" style="font-size:18px;padding:0;width:40px;height:40px;display:flex;align-items:center;justify-content:center">►</button>
+      </div>
+      <span class="muted" style="margin-left:4px;font-size:10px">arrow keys · scroll zoom</span>
       <button class="btn sm" onclick="wZoom=Math.min(3,wZoom+0.25);drawWorld()" style="margin-left:auto">+</button>
       <span class="muted" id="zoom-lbl" style="min-width:30px;text-align:center">1x</span>
       <button class="btn sm" onclick="wZoom=Math.max(0.4,wZoom-0.25);drawWorld()">-</button>
@@ -140,7 +148,7 @@ select,input[type=text]{background:#08080f;border:1px solid #2a2a44;border-radiu
     <div class="card" style="flex-shrink:0">
       <div class="card-title">Party</div>
       <canvas id="cv-party" height="90" style="border-radius:6px;background:#050510;width:100%;display:block"></canvas>
-      <div class="g4" id="unit-cards" style="margin-top:6px"></div>
+      <div id="unit-cards" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:6px"></div>
     </div>
     <div class="hub-section" style="flex-shrink:0">
       <div class="hub-section-header" onclick="toggleSection('res')">
@@ -187,9 +195,6 @@ select,input[type=text]{background:#08080f;border:1px solid #2a2a44;border-radiu
         <span style="font-weight:600;color:#88aaff;font-size:12px">📜 Quests</span><span id="quests-arrow">▼</span>
       </div>
       <div class="hub-section-body" id="quests-body"><div id="quest-list"></div></div>
-    </div>
-    <div style="flex:1;min-height:60px;display:flex;flex-direction:column">
-      <div class="log" id="wlog"></div>
     </div>
   </div>
 </div>
@@ -742,7 +747,8 @@ var START_PX=125, START_PY=375;
 // ── STATE ─────────────────────────────────────────────────────────────
 var G={players:[],active:0,gold:60,
   inventory:{},
-  currentTown:null, // which town player is currently in
+  currentTown:null,
+  craftQty:1, // which town player is currently in
   resources:{
     // Ashenvale tier
     bronze_ore:0, logs:0, shrimp:0, bronze_bar:0,
@@ -1037,13 +1043,20 @@ function mv(dx,dy){
   if(p.steps===(p.maxSteps||5)){
     p.startPx=p.px;p.startPy=p.py;
     window._turnFogSnap=saveFogSnapshot();
-    window._turnDiscovered=[]; // track locations found this turn
+    window._turnDiscovered=[];
   }
   var nx=Math.max(20,Math.min(MAP_IMG_W-20,p.px+dx*MOVE_STEP));
   var ny=Math.max(20,Math.min(MAP_IMG_H-20,p.py+dy*MOVE_STEP));
   if(!isWalkable(nx,ny)){notify("Can't move there — water blocks the way!");return;}
-  p.px=nx;p.py=ny;p.steps--;
-  revealFog(p.px,p.py,28);
+  // only burn a step if moving into unexplored fog
+  var destFog=getFogAlpha(nx,ny);
+  var costsStep=destFog>0; // free if already explored (fog=0)
+  if(costsStep&&p.steps<=0){notify("No steps left — end your turn!");return;}
+  p.px=nx;p.py=ny;
+  if(costsStep){
+    p.steps--;
+    revealFog(p.px,p.py,28);
+  }
   // show end turn bar when steps hit 0
   updateEndTurnBar(p);
   // check if near a location
@@ -1168,7 +1181,9 @@ function updWUI(){
   b.style.background=p.col+"33";b.style.color=p.col;b.style.border="1px solid "+p.col+"66";
 }
 function wlog(m,cls){
-  var l=document.getElementById('wlog');var p=document.createElement('p');
+  var l=document.getElementById('wlog');
+  if(!l)return;
+  var p=document.createElement('p');
   if(cls)p.className=cls;p.textContent=m;l.appendChild(p);l.scrollTop=l.scrollHeight;
 }
 function openLoc(){
@@ -1275,7 +1290,7 @@ function renderPartyStrip(){
     var hpCol=hpPct>60?"#44ff88":hpPct>30?"#ffcc22":"#ff4444";
     var st=calcStats(u);
 
-    // build equipped gear bonus string
+    // build equipped gear bonuses
     var bonuses=[];
     var slotIcons={helmet:"⛑",necklace:"📿",chest:"🧥",gloves:"🧤",
                    mainhand:"⚔",offhand:"🛡",legs:"👖",boots:"👢",ring:"💍",ammo:"🏹"};
@@ -1286,27 +1301,38 @@ function renderPartyStrip(){
         var statParts=Object.keys(item.stats).map(function(k){
           return'+'+item.stats[k]+k.toUpperCase().slice(0,3);
         }).join(' ');
-        bonuses.push(slotIcons[slot]||'·')+' '+statParts;
-        bonuses[bonuses.length-1]=(slotIcons[slot]||'·')+' '+statParts;
+        bonuses.push((slotIcons[slot]||'·')+' '+statParts);
       });
     }
 
-    h+='<div class="ucard _uc" onclick="_act(this)" data-fn="showUnitModal" data-id="'+u.id+'" style="display:flex;gap:6px;align-items:flex-start">';
-    // left: sprite canvas
-    h+='<canvas class="unit-sprite-cv" data-uid="'+u.id+'" width="44" height="56" style="flex-shrink:0;background:#050510;border-radius:4px;image-rendering:pixelated"></canvas>';
-    // middle: name + stats
-    h+='<div style="flex:1;min-width:0">';
-    h+='<div style="font-size:12px;font-weight:600;color:'+CC[u.cls]+'">'+u.name+'</div>';
-    h+='<div class="muted">Lv '+u.level+' '+u.cls+'</div>';
-    h+='<div class="hpbar"><div class="hpfill" style="width:'+hpPct+'%;background:'+hpCol+'"></div></div>';
-    h+='<div class="muted" style="margin-top:2px">ATK:'+st.atk+' DEF:'+st.def+' HP:'+u.hp+'/'+st.mhp+'</div>';
-    h+='</div>';
-    // right: equipped bonuses (only if any)
+    // card: fixed layout, no overflow
+    h+='<div class="ucard _uc" onclick="_act(this)" data-fn="showUnitModal" data-id="'+u.id+'"'
+      +' style="display:flex;flex-direction:column;gap:4px;padding:8px;overflow:hidden">';
+
+    // top row: sprite + name/class/stats
+    h+='<div style="display:flex;gap:8px;align-items:center">';
+    h+='<canvas class="unit-sprite-cv" data-uid="'+u.id+'" width="40" height="50"'
+      +' style="flex-shrink:0;background:#050510;border-radius:4px;image-rendering:pixelated;width:40px;height:50px"></canvas>';
+    h+='<div style="flex:1;min-width:0;overflow:hidden">';
+    h+='<div style="font-size:12px;font-weight:700;color:'+CC[u.cls]+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+u.name+'</div>';
+    h+='<div class="muted" style="font-size:10px">Lv '+u.level+' '+u.cls+'</div>';
+    h+='<div class="hpbar" style="margin-top:4px"><div class="hpfill" style="width:'+hpPct+'%;background:'+hpCol+'"></div></div>';
+    h+='<div style="font-size:10px;color:#888;margin-top:2px;line-height:1.6">'
+      +'<div>ATK: '+st.atk+'</div>'
+      +'<div>DEF: '+st.def+'</div>'
+      +'<div>HP: '+u.hp+'/'+st.mhp+'</div>'
+      +'</div>';
+    h+='</div></div>';
+
+    // bottom row: gear bonuses (only if equipped)
     if(bonuses.length>0){
-      h+='<div style="font-size:10px;color:#ffcc44;line-height:1.6;flex-shrink:0;max-width:80px;text-align:right">';
-      bonuses.forEach(function(b){h+='<div>'+b+'</div>';});
+      h+='<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px">';
+      bonuses.forEach(function(b){
+        h+='<span style="font-size:9px;color:#ffcc44;background:#1a1500;border:1px solid #3a2a00;border-radius:3px;padding:1px 4px;white-space:nowrap">'+b+'</span>';
+      });
       h+='</div>';
     }
+
     h+='</div>';
   });
   document.getElementById('unit-cards').innerHTML=h;
@@ -1393,7 +1419,7 @@ function drillSkill(sk){
   var allU=[];G.players.forEach(function(pl){pl.units.forEach(function(u){allU.push({u:u,p:pl});});});
   allU.forEach(function(pu){
     var u=pu.u,p=pu.p;var active=u.assignedSkill===sk;
-    var lv=u.skills[sk]||1,xp=u.skillXp[sk]||0,need=lv*100,pct=Math.round(xp/need*100);
+    var lv=u.skills[sk]||1,xp=u.skillXp[sk]||0,need=lv*100,pct=Math.min(100,Math.round(xp/need*100));
     var unitTier=G.currentTown?getSkillTier(sk,G.currentTown,lv):null;
     var unitLocked=!unitTier;
     h+='<div style="background:#080818;border:1px solid '+(active?'#4aff88':'#1a1a2e')+';border-radius:6px;padding:8px;margin-bottom:6px">';
@@ -1415,16 +1441,24 @@ function renderForgeList(){
     document.getElementById('forge-list').innerHTML='<div class="muted" style="padding:6px">Visit a town to use the forge.</div>';
     return;
   }
-  var h='<div style="font-size:11px;color:#aa88ff;margin-bottom:8px">'+G.currentTown+' Forge</div>';
+  var qty=G.craftQty||1;
+  var h='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">';
+  h+='<span style="font-size:11px;color:#aa88ff">'+G.currentTown+' Forge</span>';
+  h+='<div style="margin-left:auto;display:flex;gap:4px">';
+  h+='<button class="btn sm '+(qty===1?'prim':'')+'" onclick="setCraftQty(1)">x1</button>';
+  h+='<button class="btn sm '+(qty===5?'prim':'')+'" onclick="setCraftQty(5)">x5</button>';
+  h+='<button class="btn sm '+(qty===10?'prim':'')+'" onclick="setCraftQty(10)">x10</button>';
+  h+='</div></div>';
   recipes.forEach(function(r){
-    var can=Object.keys(r.needs).every(function(k){return(G.resources[k]||0)>=r.needs[k];});
+    var qty=G.craftQty||1;
+    var can=Object.keys(r.needs).every(function(k){return(G.resources[k]||0)>=r.needs[k]*qty;});
     var needStr=Object.keys(r.needs).map(function(k){
       var have=Math.floor(G.resources[k]||0);
-      var need=r.needs[k];
-      return '<span class="'+(have>=need?'green-text':'red-text')+'">'+k.replace('_',' ')+' '+have+'/'+need+'</span>';
+      var need=r.needs[k]*qty;
+      return '<span class="'+(have>=need?'green-text':'red-text')+'">'+k.replace(/_/g,' ')+' '+have+'/'+need+'</span>';
     }).join(' · ');
     h+='<div class="recipe _rec" onclick="_act(this)" data-fn="drillForge" data-id="'+r.id+'">';
-    h+='<div class="row"><span>'+r.icon+' <strong>'+r.name+'</strong></span>';
+    h+='<div class="row"><span>'+r.icon+' <strong>'+r.name+(qty>1?' <span class="muted">x'+qty+'</span>':'')+'</strong></span>';
     h+=(can?'<span class="green-text" style="margin-left:auto;font-size:11px">Ready ✓</span>':'<span class="muted" style="margin-left:auto;font-size:11px">needs more</span>');
     h+='</div>';
     h+='<div style="font-size:10px;margin-top:2px">'+needStr+'</div>';
@@ -1438,14 +1472,16 @@ function renderForgeList(){
   document.getElementById('forge-list').innerHTML=h;
 }
 function drillForge(rid){
+  window._curForgeDrill=rid;
   var allR=[];Object.values(RECIPES).forEach(function(arr){allR=allR.concat(arr);});
   var r=allR.find(function(x){return x.id===rid;});
-  var can=Object.keys(r.needs).every(function(k){return(G.resources[k]||0)>=r.needs[k];});
-  document.getElementById('forge-craft-title').textContent=r.icon+" "+r.name;
+  var qty=G.craftQty||1;
+  var can=Object.keys(r.needs).every(function(k){return(G.resources[k]||0)>=r.needs[k]*qty;});
+  document.getElementById('forge-craft-title').textContent=r.icon+" "+r.name+(qty>1?" x"+qty:"");
   var h='<div style="margin-bottom:10px">';
   Object.keys(r.needs).forEach(function(k){
-    var have=Math.floor(G.resources[k]||0),need=r.needs[k],ok=have>=need;
-    h+='<div class="row" style="margin-bottom:4px"><span>'+k+'</span><span class="'+(ok?'green-text':'red-text')+'" style="margin-left:auto">'+have+'/'+need+'</span></div>';
+    var have=Math.floor(G.resources[k]||0),need=r.needs[k]*qty,ok=have>=need;
+    h+='<div class="row" style="margin-bottom:4px"><span>'+k.replace(/_/g,' ')+'</span><span class="'+(ok?'green-text':'red-text')+'" style="margin-left:auto">'+have+'/'+need+'</span></div>';
   });
   h+='</div>';
   if(G.crafting&&G.crafting.id===rid){
@@ -1465,11 +1501,21 @@ function drillForge(rid){
 function startCraft(rid){
   var allR2=[];Object.values(RECIPES).forEach(function(arr){allR2=allR2.concat(arr);});
   var r=allR2.find(function(x){return x.id===rid;});
-  if(!Object.keys(r.needs).every(function(k){return(G.resources[k]||0)>=r.needs[k];})){notify("Not enough materials!");return;}
-  Object.keys(r.needs).forEach(function(k){G.resources[k]-=r.needs[k];});
-  G.crafting={id:rid,progress:0,total:r.time*2};
-  notify("Crafting "+r.name+"...");drillForge(rid);renderForgeList();saveGame();
+  var qty=G.craftQty||1;
+  if(!Object.keys(r.needs).every(function(k){return(G.resources[k]||0)>=r.needs[k]*qty;})){notify("Not enough materials!");return;}
+  Object.keys(r.needs).forEach(function(k){G.resources[k]-=r.needs[k]*qty;});
+  G.crafting={id:rid,progress:0,total:r.time*2,qty:qty};
+  notify("Crafting "+r.name+(qty>1?" x"+qty:"")+"...");drillForge(rid);renderForgeList();saveGame();
 }
+function setCraftQty(n){
+  G.craftQty=n;
+  renderForgeList();
+  // refresh drill view if open
+  if(document.getElementById('forge-craft').classList.contains('on')&&window._curForgeDrill){
+    drillForge(window._curForgeDrill);
+  }
+}
+
 function cancelCraft(){
   if(!G.crafting)return;
   var r=RECIPES.find(function(x){return x.id===G.crafting.id;});
@@ -1672,10 +1718,11 @@ function gameTick(){
       var allRC=[];Object.values(RECIPES).forEach(function(arr){allRC=allRC.concat(arr);});
       var r=allRC.find(function(x){return x.id===G.crafting.id;});
       if(!G.inventory)G.inventory={};
+      var cqty=G.crafting.qty||1;
       Object.keys(r.makes).forEach(function(k){
-        // gear items go to inventory, materials go to resources
-        if(ITEMS[k]){G.inventory[k]=(G.inventory[k]||0)+r.makes[k];}
-        else{G.resources[k]=(G.resources[k]||0)+r.makes[k];}
+        var amt=r.makes[k]*cqty;
+        if(ITEMS[k]){G.inventory[k]=(G.inventory[k]||0)+amt;}
+        else{G.resources[k]=(G.resources[k]||0)+amt;}
       });
       var allU=[];G.players.forEach(function(p){p.units.forEach(function(u){allU.push(u);});});
       allU.forEach(function(u){grantSkXp(u,r.sk,20);});
@@ -1697,12 +1744,31 @@ function gameTick(){
     if(document.getElementById('sk-detail').classList.contains('on')&&window._curSkill)drillSkill(window._curSkill);
     else renderSkillList();
   }
+  if(openSections['forge']&&G.currentTown){
+    // only refresh forge list (not drill view) to show Ready/needs more updates
+    if(document.getElementById('forge-list').classList.contains('on')||
+       !document.getElementById('forge-craft').classList.contains('on')){
+      renderForgeList();
+    }
+  }
   saveGame();
 }
 function grantSkXp(u,sk,amt){
   u.skillXp[sk]=(u.skillXp[sk]||0)+amt;
-  var need=(u.skills[sk]+1)*100;
-  while(u.skillXp[sk]>=need){u.skillXp[sk]-=need;u.skills[sk]++;need=(u.skills[sk]+1)*100;notify(u.name+" "+sk+" Lv"+u.skills[sk]+"!");}
+  var need=(u.skills[sk]||1)*100; // level 1 needs 100xp, level 9 needs 900xp
+  while(u.skillXp[sk]>=need){
+    u.skillXp[sk]-=need;
+    u.skills[sk]=(u.skills[sk]||1)+1;
+    need=u.skills[sk]*100;
+    notify(u.name+" "+SKILL_INFO[sk].label+" Level "+u.skills[sk]+"!");
+    wlog(u.name+" reached "+SKILL_INFO[sk].label+" Lv"+u.skills[sk]+"!","good");
+    if(u.skills[sk]>=10&&sk){
+      notify(u.name+" can now gather at Ironhold!");
+    }
+  }
+  // clamp xp to never exceed needed (prevents bar overflow)
+  var curNeed=u.skills[sk]*100;
+  if(u.skillXp[sk]>curNeed)u.skillXp[sk]=curNeed-1;
 }
 function checkQuests(){
   if(!G.quests[1].done){var hb=(G.resources.bronze_bar||0)>=1,eq=false;G.players.forEach(function(p){p.units.forEach(function(u){if(u.weapon!=="Fists")eq=true;});});if(hb&&eq)completeQuest(1);}
@@ -2016,6 +2082,45 @@ function blog(m,cls){var l=document.getElementById('blog');var p=document.create
 function clearBlog(){document.getElementById('blog').innerHTML="";}
 
 // ── DISPATCH ──────────────────────────────────────────────────────────
+function _actEquip(el){
+  var uid=el.getAttribute('data-uid');
+  var itemId=el.getAttribute('data-item');
+  equipItem2(uid,itemId);
+}
+
+function showSlotOptions(uid,slot){
+  var u=null;G.players.forEach(function(pl){pl.units.forEach(function(x){if(x.id===uid)u=x;});});
+  if(!u)return;
+  var available=[];
+  if(G.inventory){
+    Object.keys(G.inventory).forEach(function(itemId){
+      var qty=G.inventory[itemId];if(!qty||qty<=0)return;
+      var item=ITEMS[itemId];if(!item)return;
+      if(item.slot===slot){
+        var canUse=!item.cls||(item.cls.indexOf(u.cls)>=0);
+        available.push({itemId:itemId,item:item,canUse:canUse,qty:qty});
+      }
+    });
+  }
+  if(available.length===0){notify("No "+slot+" items in inventory");return;}
+  var h='<div style="font-size:15px;font-weight:600;margin-bottom:10px;color:#aa88ff">Choose '+slot+'</div>';
+  available.forEach(function(a){
+    var statStr=Object.keys(a.item.stats).map(function(k){return"+"+a.item.stats[k]+" "+k;}).join(", ");
+    h+='<div style="background:#080818;border:1px solid #1a1a2e;border-radius:6px;padding:8px;margin-bottom:6px;display:flex;align-items:center;gap:8px">';
+    h+='<span style="font-size:20px">'+a.item.icon+'</span>';
+    h+='<div style="flex:1"><div style="font-size:13px;font-weight:600">'+a.item.name+'</div>';
+    h+='<div class="muted">'+a.item.desc+'</div>';
+    h+='<div class="green-text" style="font-size:11px">'+statStr+'</div></div>';
+    if(a.canUse){
+      h+='<button class="btn sm gold" onclick="closeModal();equipItem2(\'' +uid+ '\',\'' +a.itemId+ '\')">Equip</button>';
+    }else{
+      h+='<span class="muted" style="font-size:11px">Wrong class</span>';
+    }
+    h+='</div>';
+  });
+  showModal(h);
+}
+
 function _act(el){
   var fn=el.getAttribute('data-fn');
   var id=el.getAttribute('data-id');
