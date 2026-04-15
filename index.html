@@ -107,11 +107,21 @@ select,input[type=text]{background:#08080f;border:1px solid #2a2a44;border-radiu
       <div style="margin-left:auto;display:flex;gap:5px;align-items:center">
         <span class="gold-text" id="w-gold" style="font-size:12px"></span>
         <button class="btn sm" id="btn-enter" style="display:none;background:#1a2a0a;border-color:#4a8a1a;color:#8aff4a" onclick="openLoc()">⚔ Enter</button>
-        <button class="btn sm" onclick="endWTurn()">End Turn</button>
       </div>
     </div>
     <div id="map-canvas-wrap">
       <canvas id="cv-world"></canvas>
+    </div>
+    <!-- end turn bar: only visible when steps = 0 -->
+    <div id="end-turn-bar" style="display:none;flex-shrink:0;background:#0f0f1e;border:1px solid #6a4aff;border-radius:8px;padding:10px 16px;align-items:center;justify-content:space-between;gap:10px">
+      <div>
+        <div style="font-weight:600;color:#aa88ff;font-size:13px" id="eot-name"></div>
+        <div class="muted" style="font-size:11px">All steps used</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn sm" style="background:#1a1a2a;border-color:#6644aa;color:#aa88ff" onclick="resetTurn()">↩ Reset Turn</button>
+        <button class="btn prim" onclick="endWTurn()" style="padding:6px 20px">End Turn ▶</button>
+      </div>
     </div>
     <div id="map-footer">
       <button class="btn sm" onclick="mv(0,-1)">▲</button>
@@ -132,30 +142,31 @@ select,input[type=text]{background:#08080f;border:1px solid #2a2a44;border-radiu
       <canvas id="cv-party" height="90" style="border-radius:6px;background:#050510;width:100%;display:block"></canvas>
       <div class="g4" id="unit-cards" style="margin-top:6px"></div>
     </div>
-    <div style="display:flex;gap:6px;flex-shrink:0">
-      <div class="hub-section" style="flex:1">
-        <div class="hub-section-header" onclick="toggleSection('res')">
-          <span style="font-weight:600;color:#ffcc44;font-size:12px">⚙ Resources</span><span id="res-arrow">▼</span>
-        </div>
-        <div class="hub-section-body" id="res-body"><div id="res-list"></div></div>
+    <div class="hub-section" style="flex-shrink:0">
+      <div class="hub-section-header" onclick="toggleSection('res')">
+        <span style="font-weight:600;color:#ffcc44;font-size:12px">⚙ Resources</span><span id="res-arrow">▼</span>
       </div>
-      <div class="hub-section" style="flex:1">
-        <div class="hub-section-header" onclick="toggleSection('skills')">
-          <span style="font-weight:600;color:#4aff88;font-size:12px">⛏ AFK Skills</span><span id="skills-arrow">▼</span>
-        </div>
-        <div class="hub-section-body" id="skills-body">
-          <div class="drill-layer on" id="sk-list"></div>
-          <div class="drill-layer" id="sk-detail">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-              <button class="btn sm" onclick="drillBack('skills')">◄</button>
-              <span id="sk-detail-title" style="font-weight:600"></span>
-            </div>
-            <div id="sk-detail-body"></div>
+      <div class="hub-section-body" id="res-body"><div id="res-list"></div></div>
+    </div>
+    <div id="hub-skills-wrap" style="display:none;flex-shrink:0">
+    <div class="hub-section">
+      <div class="hub-section-header" onclick="toggleSection('skills')">
+        <span style="font-weight:600;color:#4aff88;font-size:12px">⛏ AFK Skills</span><span id="skills-arrow">▼</span>
+      </div>
+      <div class="hub-section-body" id="skills-body">
+        <div class="drill-layer on" id="sk-list"></div>
+        <div class="drill-layer" id="sk-detail">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+            <button class="btn sm" onclick="drillBack('skills')">◄</button>
+            <span id="sk-detail-title" style="font-weight:600"></span>
           </div>
+          <div id="sk-detail-body"></div>
         </div>
       </div>
     </div>
-    <div class="hub-section" style="flex-shrink:0">
+    </div>
+    <div id="hub-forge-wrap" style="display:none;flex-shrink:0">
+    <div class="hub-section">
       <div class="hub-section-header" onclick="toggleSection('forge')">
         <span style="font-weight:600;color:#ff8844;font-size:12px">🔥 Forge</span><span id="forge-arrow">▼</span>
       </div>
@@ -169,6 +180,7 @@ select,input[type=text]{background:#08080f;border:1px solid #2a2a44;border-radiu
           <div id="forge-craft-body"></div>
         </div>
       </div>
+    </div>
     </div>
     <div class="hub-section" style="flex-shrink:0">
       <div class="hub-section-header" onclick="toggleSection('quests')">
@@ -199,6 +211,7 @@ select,input[type=text]{background:#08080f;border:1px solid #2a2a44;border-radiu
   <div id="battle-right">
     <div class="card" id="binfo" style="font-size:12px;color:#555;flex-shrink:0">Select a unit</div>
     <div class="muted" id="bhint" style="flex-shrink:0;min-height:14px"></div>
+      <div id="bability" style="flex-shrink:0;margin-bottom:4px"></div>
     <div class="card" style="flex-shrink:0;padding:6px 8px">
       <div class="muted" style="margin-bottom:4px">Battle Log</div>
       <div class="log" id="blog" style="height:120px;flex:none"></div>
@@ -272,25 +285,34 @@ function initFog(){
 }
 function revealFog(mapPx,mapPy,radiusPx){
   if(!FOG)return;
-  // convert radius from map pixels to grid cells
-  var rgx=Math.ceil(radiusPx/MAP_IMG_W*CGRID_W);
-  var rgy=Math.ceil(radiusPx/MAP_IMG_H*CGRID_H);
+  // convert to grid coords
   var cx=Math.floor(mapPx/MAP_IMG_W*CGRID_W);
   var cy=Math.floor(mapPy/MAP_IMG_H*CGRID_H);
-  // first mark all currently visible as just seen
-  for(var i=0;i<FOG.length;i++){if(FOG[i]===2)FOG[i]=1;}
-  // reveal circular area
-  for(var dy=-rgy;dy<=rgy;dy++){
-    for(var dx=-rgx;dx<=rgx;dx++){
-      var dist2=(dx/rgx)*(dx/rgx)+(dy/rgy)*(dy/rgy);
-      if(dist2<=1.1){
+  // use fixed cell radius for consistency - same number of cells every time
+  var cellR=Math.round(radiusPx/MAP_IMG_W*CGRID_W);
+  // restore snapshot visible->seen transition (done at turn end, not each step)
+  // during a turn just reveal new cells without touching already-revealed ones
+  for(var dy=-cellR;dy<=cellR;dy++){
+    for(var dx=-cellR;dx<=cellR;dx++){
+      if(dx*dx+dy*dy<=cellR*cellR){
         var nx=cx+dx,ny=cy+dy;
         if(nx>=0&&nx<CGRID_W&&ny>=0&&ny<CGRID_H){
-          FOG[ny*CGRID_W+nx]=2; // currently visible
+          // only upgrade: 0->2 or 1->2, never downgrade
+          if(FOG[ny*CGRID_W+nx]<2)FOG[ny*CGRID_W+nx]=2;
         }
       }
     }
   }
+}
+
+// save full fog snapshot for reset
+function saveFogSnapshot(){
+  if(!FOG)return null;
+  return new Uint8Array(FOG);
+}
+function restoreFogSnapshot(snap){
+  if(!FOG||!snap)return;
+  for(var i=0;i<FOG.length;i++)FOG[i]=snap[i];
 }
 function getFogAlpha(mapPx,mapPy){
   if(!FOG)return 0;
@@ -299,70 +321,453 @@ function getFogAlpha(mapPx,mapPy){
   gx=Math.max(0,Math.min(CGRID_W-1,gx));
   gy=Math.max(0,Math.min(CGRID_H-1,gy));
   var v=FOG[gy*CGRID_W+gx];
-  if(v===2)return 0;    // visible - no fog
-  if(v===1)return 0.55; // seen - partial fog
-  return 0.92;          // unseen - heavy fog
+  if(v===2)return 0;    // currently visible - fully clear
+  if(v===1)return 0;    // previously seen - also fully clear (explored = stays clear)
+  return 0.92;          // never visited - heavy dark fog
 }
 
 // Location pixel coords on the 768x512 map image
 // These are center points of each location marker
 var LOCS=[
-  {name:"Ashenvale",   type:"town",   px:97,  py:332, desc:"A quiet riverside village. Forge and quest board inside."},
-  {name:"Ironhold",    type:"town",   px:620, py:148, desc:"A dwarven settlement near the northern peaks."},
-  {name:"Goblin Outpost", type:"dungeon", px:375, py:175, desc:"A crude goblin fortification in the northern clearing.", enemies:["goblin","goblin","goblin"],reward:{gold:35,xp:20}},
-  {name:"Shadowfen",   type:"dungeon", px:248, py:390, desc:"A damp cave network beneath the southern marsh.", enemies:["goblin","dark_knight","goblin"],reward:{gold:60,xp:30}},
-  {name:"Iron Gate",   type:"dungeon", px:590, py:380, desc:"Ancient ruins held by dark knights.", enemies:["dark_knight","orc","dark_knight"],reward:{gold:80,xp:40}},
-  {name:"Blighted Wood",type:"dungeon",px:520, py:445, desc:"A corrupted forest teeming with orcs.", enemies:["orc","orc","goblin"],reward:{gold:55,xp:28}}
+  {name:"Ashenvale",   type:"town",    px:125, py:375, desc:"A quiet riverside village. Forge and quest board inside."},
+  {name:"Ironhold",    type:"town",    px:605, py:125, desc:"A dwarven settlement near the northern peaks."},
+  {name:"Goblin Outpost", type:"dungeon", px:345, py:125, desc:"A crude goblin fortification in the northern clearing.", enemies:["goblin","goblin","goblin"],reward:{gold:35,xp:20}},
+  {name:"Shadowfen",   type:"dungeon", px:233, py:300, desc:"A damp cave network beneath the southern marsh.", enemies:["goblin","dark_knight","goblin"],reward:{gold:60,xp:30}},
+  {name:"Iron Gate",   type:"dungeon", px:530, py:317, desc:"Ancient ruins held by dark knights.", enemies:["dark_knight","orc","dark_knight"],reward:{gold:80,xp:40}},
+  {name:"Blighted Wood",type:"dungeon",px:615, py:412, desc:"A corrupted forest teeming with orcs.", enemies:["orc","orc","goblin"],reward:{gold:55,xp:28}},
+  {name:"Mystery Cave", type:"dungeon",px:661, py:235, desc:"A hidden cave shrouded in darkness. Something lurks within.", enemies:["orc","dark_knight","orc"],reward:{gold:70,xp:35}}
 ];
 
 var QUESTS=[
   {id:0,name:"Clear the Goblin Outpost",desc:"Defeat all enemies at the northern outpost.",reward:{gold:40,xp:25},done:false},
-  {id:1,name:"Smelt and Arm",desc:"Craft an Iron Bar then equip a weapon.",reward:{gold:30,xp:15},done:false},
+  {id:1,name:"Smelt and Arm",desc:"Craft a Bronze Bar at Ashenvale then equip a weapon.",reward:{gold:30,xp:15},done:false},
   {id:2,name:"Reach Ironhold",desc:"Find the dwarven settlement in the north.",reward:{gold:50,xp:20},done:false}
 ];
+// ── ABILITY DEFINITIONS ──────────────────────────────────────────────
+var ABILITIES={
+  warrior:{
+    name:"Shield Bash", icon:"🛡", cooldown:3,
+    desc:"Deals 1.5x damage and stuns the target for 1 turn.",
+    targetType:"enemy_single",
+    use:function(actor,target){
+      var dmg=Math.max(1,Math.floor(actor.atk*1.5)-target.def);
+      target.hp=Math.max(0,target.hp-dmg);
+      target.stunned=1;
+      spawnDamageNum((target.x+0.5)*bTS,(target.y+0.2)*bTS,"BASH! "+dmg,"#ff8844");
+      blog(actor.name+" Shield Bash → "+target.name+": "+dmg+" dmg + stun!","hi");
+      if(target.hp<=0)handleKill(actor,target);
+      drawBattle();renderBBars();chkBattleEnd();
+    }
+  },
+  mage:{
+    name:"Fireball", icon:"🔥", cooldown:3,
+    desc:"Hits all enemies in a 3x3 area around target tile.",
+    targetType:"tile_aoe",
+    use:function(actor,tx,ty){
+      var hit=0;
+      BT.enemies.filter(function(e){return e.hp>0;}).forEach(function(e){
+        if(Math.abs(e.x-tx)<=1&&Math.abs(e.y-ty)<=1){
+          var dmg=Math.max(1,actor.atk-e.def+2);
+          e.hp=Math.max(0,e.hp-dmg);
+          spawnDamageNum((e.x+0.5)*bTS,(e.y+0.2)*bTS,"🔥"+dmg,"#ff4400");
+          blog(actor.name+" Fireball hits "+e.name+": "+dmg,"hi");
+          if(e.hp<=0)handleKill(actor,e);
+          hit++;
+        }
+      });
+      if(hit===0)blog(actor.name+" Fireball — no enemies in blast radius!","bad");
+      drawBattle();renderBBars();chkBattleEnd();
+    }
+  },
+  archer:{
+    name:"Piercing Shot", icon:"🏹", cooldown:3,
+    desc:"Fires in a straight line, hitting every enemy in that direction.",
+    targetType:"direction",
+    use:function(actor,dir){
+      // dir: 0=up 1=right 2=down 3=left
+      var dx=[0,1,0,-1][dir], dy=[-1,0,1,0][dir];
+      var hit=0, cx=actor.x+dx, cy=actor.y+dy;
+      while(cx>=0&&cx<10&&cy>=0&&cy<10){
+        var e=BT.enemies.find(function(e){return e.x===cx&&e.y===cy&&e.hp>0;});
+        if(e){
+          var dmg=Math.max(1,actor.atk+2); // piercing ignores def
+          e.hp=Math.max(0,e.hp-dmg);
+          spawnDamageNum((e.x+0.5)*bTS,(e.y+0.2)*bTS,"✦"+dmg,"#88ffcc");
+          blog(actor.name+" Piercing Shot → "+e.name+": "+dmg+" (ignores DEF)","hi");
+          if(e.hp<=0)handleKill(actor,e);
+          hit++;
+        }
+        cx+=dx;cy+=dy;
+      }
+      if(hit===0)blog(actor.name+" Piercing Shot — no enemies in that direction!","bad");
+      drawBattle();renderBBars();chkBattleEnd();
+    }
+  },
+  cleric:{
+    name:"Holy Light", icon:"✨", cooldown:3,
+    desc:"Heals the most wounded ally for 40% of their max HP.",
+    targetType:"self",
+    use:function(actor){
+      var allies=BT.units.filter(function(u){return u.hp>0;});
+      if(!allies.length)return;
+      var target=allies.reduce(function(a,b){
+        return(a.hp/a.mhp)<(b.hp/b.mhp)?a:b;
+      });
+      var heal=Math.floor(target.mhp*0.4);
+      target.hp=Math.min(target.mhp,target.hp+heal);
+      // sync to player unit
+      var pu=G.players[G.active].units.find(function(u){return u.id===target.id;});
+      if(pu)pu.hp=target.hp;
+      spawnHeal((target.x+0.5)*bTS,(target.y+0.2)*bTS,heal);
+      blog(actor.name+" Holy Light heals "+target.name+" for "+heal+" HP!","good");
+      drawBattle();renderBBars();
+    }
+  }
+};
+
+function handleKill(actor,target){
+  if(target.team!=='enemy')return;
+  spawnCoin((target.x+0.5)*bTS,(target.y+0.3)*bTS);
+  G.gold+=target.gold||0;
+  var allU=[];G.players.forEach(function(p){p.units.forEach(function(u){allU.push(u);});});
+  allU.forEach(function(u){
+    var oldLv=u.level;
+    u.xp+=(target.xp||10);checkLvl(u);
+    if(u.level>oldLv){
+      var pu=BT.units.find(function(b){return b.id===u.id;});
+      if(pu)spawnLevelUp((pu.x+0.5)*bTS,(pu.y+0.2)*bTS);
+    }
+  });
+  blog(target.name+" defeated! +"+target.gold+"g","good");
+}
+
+// ability targeting state
+var BT_ABILITY={active:false,actor:null,mode:null};
+
+function activateAbility(unitId){
+  var u=BT.units.find(function(x){return x.id===unitId;});
+  if(!u)return;
+  var ab=ABILITIES[u.cls];
+  if(!ab)return;
+  var btUnit=BT.units.find(function(x){return x.id===unitId;});
+  if(btUnit&&btUnit.abilityCooldown>0){notify("Ability ready in "+btUnit.abilityCooldown+" turns!");return;}
+
+  if(ab.targetType==='self'){
+    // use immediately
+    ab.use(u);
+    markAbilityUsed(u);
+  } else if(ab.targetType==='enemy_single'){
+    BT_ABILITY={active:true,actor:u,mode:'enemy_single'};
+    document.getElementById('bhint').textContent="Click an enemy to use "+ab.name;
+    // highlight enemies
+    bhi=BT.enemies.filter(function(e){return e.hp>0;}).map(function(e){return{x:e.x,y:e.y};});
+    drawBattle();
+  } else if(ab.targetType==='tile_aoe'){
+    BT_ABILITY={active:true,actor:u,mode:'tile_aoe'};
+    document.getElementById('bhint').textContent="Click a tile to launch "+ab.name;
+    bhi=[];
+    // show all tiles as valid
+    for(var y=0;y<10;y++)for(var x=0;x<10;x++)bhi.push({x:x,y:y});
+    drawBattle();
+  } else if(ab.targetType==='direction'){
+    // show direction picker
+    showDirectionPicker(u);
+  }
+}
+
+function showDirectionPicker(u){
+  var h='<div style="font-size:15px;font-weight:600;margin-bottom:12px;color:#88ffcc">🏹 Piercing Shot — choose direction</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:180px;margin:0 auto">';
+  h+='<div></div>';
+  h+='<button class="btn prim" onclick="closeModal();fireArrow('+JSON.stringify(u.id)+',0)">▲ North</button>';
+  h+='<div></div>';
+  h+='<button class="btn prim" onclick="closeModal();fireArrow('+JSON.stringify(u.id)+',3)">◄ West</button>';
+  h+='<div style="background:#0a0a1a;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px">🏹</div>';
+  h+='<button class="btn prim" onclick="closeModal();fireArrow('+JSON.stringify(u.id)+',1)">East ►</button>';
+  h+='<div></div>';
+  h+='<button class="btn prim" onclick="closeModal();fireArrow('+JSON.stringify(u.id)+',2)">▼ South</button>';
+  h+='<div></div>';
+  h+='</div>';
+  showModal(h);
+}
+
+function fireArrow(uid,dir){
+  var u=BT.units.find(function(x){return x.id===uid;});
+  if(!u)return;
+  ABILITIES.archer.use(u,dir);
+  markAbilityUsed(u);
+  BT_ABILITY={active:false,actor:null,mode:null};
+}
+
+function markAbilityUsed(u){
+  u.abilityCooldown=ABILITIES[u.cls].cooldown;
+  BT.attacked.push(u.id);
+  BT_ABILITY={active:false,actor:null,mode:null};
+  bhi=[];
+  renderActionBtns(u);
+}
+
+function renderActionBtns(u){
+  if(!u)return;
+  var ab=ABILITIES[u.cls];
+  var h='';
+  var cooldown=u.abilityCooldown||0;
+  var canAb=cooldown<=0&&BT.attacked.indexOf(u.id)<0;
+  if(ab){
+    window._abUid=u.id;
+    h+='<button class="btn sm '+(canAb?'gold':'')+' _ab" '+(canAb?'onclick="activateAbility(window._abUid)"':'disabled')+' style="'+(canAb?'':'opacity:.4;')+'">';
+    h+=ab.icon+' '+ab.name+(cooldown>0?' ('+cooldown+')':'')+'</button>';
+  }
+  var hintEl=document.getElementById('bhint');
+  var abDiv=document.getElementById('bability');
+  if(abDiv)abDiv.innerHTML=h;
+  if(hintEl&&!BT_ABILITY.active){
+    var hints=[];
+    if(BT.moved.indexOf(u.id)<0)hints.push("Click tile to move");
+    if(BT.attacked.indexOf(u.id)<0)hints.push("Click enemy to attack");
+    hintEl.textContent=hints.join(" · ");
+  }
+}
+
+// reduce cooldowns at end of player turn
+function tickCooldowns(){
+  BT.units.forEach(function(u){
+    if(u.abilityCooldown>0)u.abilityCooldown--;
+  });
+}
+
 var EDEF={
   goblin:{name:"Goblin",hp:14,atk:5,def:1,rng:1,mv:3,xp:15,gold:8},
   orc:{name:"Orc",hp:22,atk:8,def:3,rng:1,mv:2,xp:22,gold:12},
   dark_knight:{name:"Dark Knight",hp:28,atk:10,def:5,rng:1,mv:2,xp:30,gold:18}
 };
 var SKILL_INFO={
-  mining:{res:"iron",rate:.08,label:"Mining",color:"#aaa",icon:"⛏"},
-  woodcutting:{res:"wood",rate:.10,label:"Woodcutting",color:"#8a6",icon:"🪓"},
-  fishing:{res:"fish",rate:.06,label:"Fishing",color:"#4af",icon:"🎣"}
+  mining:{
+    label:"Mining",color:"#aaa",icon:"⛏",
+    tiers:[
+      {town:"Ashenvale", res:"bronze_ore", rate:.10, label:"Bronze Ore", reqLvl:1},
+      {town:"Ironhold",  res:"iron_ore",   rate:.08, label:"Iron Ore",   reqLvl:10}
+    ]
+  },
+  woodcutting:{
+    label:"Woodcutting",color:"#8a6",icon:"🪓",
+    tiers:[
+      {town:"Ashenvale", res:"logs",     rate:.12, label:"Logs",     reqLvl:1},
+      {town:"Ironhold",  res:"oak_logs", rate:.10, label:"Oak Logs", reqLvl:10}
+    ]
+  },
+  fishing:{
+    label:"Fishing",color:"#4af",icon:"🎣",
+    tiers:[
+      {town:"Ashenvale", res:"shrimp", rate:.08, label:"Shrimp", reqLvl:1},
+      {town:"Ironhold",  res:"bass",   rate:.06, label:"Bass",   reqLvl:10}
+    ]
+  }
 };
-var RECIPES=[
-  {id:"bar",name:"Iron Bar",icon:"🔩",needs:{iron:3},makes:{bar:1},sk:"smithing",time:3},
-  {id:"sword",name:"Iron Sword",icon:"⚔",needs:{bar:2},makes:{sword:1},sk:"smithing",time:5},
-  {id:"shield",name:"Iron Shield",icon:"🛡",needs:{bar:3},makes:{shield:1},sk:"smithing",time:6},
-  {id:"bow",name:"Iron Bow",icon:"🏹",needs:{bar:2,wood:4},makes:{bow:1},sk:"crafting",time:5},
-  {id:"staff",name:"Oak Staff",icon:"🪄",needs:{bar:1,wood:6},makes:{staff:1},sk:"crafting",time:4},
-  {id:"mace",name:"Iron Mace",icon:"🔨",needs:{bar:3},makes:{mace:1},sk:"smithing",time:5}
+
+// get the active tier for a skill based on current town + that skill's own level
+function getSkillTier(sk, town, skillLevel){
+  var info=SKILL_INFO[sk];
+  if(!info||!info.tiers)return null;
+  var available=info.tiers.filter(function(t){
+    return t.town===town && skillLevel>=(t.reqLvl||1);
+  });
+  if(!available.length)return null;
+  return available[available.length-1];
+}
+
+// get skill level for a specific skill from the active player's units
+// uses the highest level among all units for that skill
+function getPartySkillLevel(sk){
+  var max=0;
+  G.players.forEach(function(p){
+    p.units.forEach(function(u){
+      var lv=u.skills[sk]||0;
+      if(lv>max)max=lv;
+    });
+  });
+  return max;
+}
+// Recipes grouped by town
+var RECIPES={
+  Ashenvale:[
+    {id:"bronze_bar",  name:"Bronze Bar",    icon:"🔩",needs:{bronze_ore:3},       makes:{bronze_bar:1},      sk:"smithing",time:3},
+    {id:"bronze_sword",name:"Bronze Sword",  icon:"⚔", needs:{bronze_bar:2},       makes:{bronze_sword:1},    sk:"smithing",time:5},
+    {id:"bronze_shield",name:"Bronze Shield",icon:"🛡", needs:{bronze_bar:3},       makes:{bronze_shield:1},   sk:"smithing",time:6},
+    {id:"bronze_bow",  name:"Bronze Bow",    icon:"🏹",needs:{bronze_bar:2,logs:4}, makes:{bronze_bow:1},      sk:"crafting",time:5},
+    {id:"bronze_staff",name:"Wood Staff",    icon:"🪄", needs:{bronze_bar:1,logs:6},makes:{bronze_staff:1},    sk:"crafting",time:4},
+    {id:"bronze_mace", name:"Bronze Mace",   icon:"🔨",needs:{bronze_bar:3},        makes:{bronze_mace:1},     sk:"smithing",time:5},
+    {id:"cooked_shrimp",name:"Cooked Shrimp",icon:"🍤",needs:{shrimp:3},            makes:{cooked_shrimp:3},   sk:"cooking", time:2},
+  ],
+  Ironhold:[
+    {id:"iron_bar",    name:"Iron Bar",      icon:"🔩",needs:{iron_ore:3},          makes:{iron_bar:1},        sk:"smithing",time:4},
+    {id:"iron_sword",  name:"Iron Sword",    icon:"⚔", needs:{iron_bar:2},          makes:{iron_sword:1},      sk:"smithing",time:6},
+    {id:"iron_shield", name:"Iron Shield",   icon:"🛡", needs:{iron_bar:3},          makes:{iron_shield:1},     sk:"smithing",time:7},
+    {id:"iron_bow",    name:"Iron Bow",      icon:"🏹",needs:{iron_bar:2,oak_logs:4},makes:{iron_bow:1},        sk:"crafting",time:6},
+    {id:"oak_staff",   name:"Oak Staff",     icon:"🪄", needs:{iron_bar:1,oak_logs:6},makes:{oak_staff:1},      sk:"crafting",time:5},
+    {id:"iron_mace",   name:"Iron Mace",     icon:"🔨",needs:{iron_bar:3},           makes:{iron_mace:1},       sk:"smithing",time:6},
+    {id:"cooked_bass", name:"Cooked Bass",   icon:"🐟",needs:{bass:2},               makes:{cooked_bass:2},     sk:"cooking", time:3},
+  ]
+};
+
+function getRecipes(){
+  var town=G.currentTown;
+  if(!town)return [];
+  return RECIPES[town]||[];
+}
+
+// ── ITEM DEFINITIONS ─────────────────────────────────────────────────
+// slot: which equipment slot this goes in
+// stats: what it adds when equipped
+// cls: null=any class, or array of classes
+var ITEMS={
+  // main hand weapons
+  iron_sword:   {name:"Iron Sword",  icon:"⚔",  slot:"mainhand", stats:{atk:10}, cls:["warrior","cleric"], desc:"A sturdy iron blade."},
+  bronze_sword: {name:"Bronze Sword",icon:"⚔",  slot:"mainhand", stats:{atk:6},  cls:["warrior","cleric"], desc:"A basic bronze blade."},
+  iron_mace:    {name:"Iron Mace",   icon:"🔨",  slot:"mainhand", stats:{atk:9,def:1}, cls:["cleric","warrior"], desc:"Heavy and brutal."},
+  bronze_mace:  {name:"Bronze Mace",  icon:"🔨",  slot:"mainhand", stats:{atk:6},  cls:["cleric","warrior"], desc:"A basic bronze mace."},
+  oak_staff:    {name:"Oak Staff",   icon:"🪄",  slot:"mainhand", stats:{atk:12}, cls:["mage"],    desc:"Focuses magical energy."},
+  bronze_staff: {name:"Wood Staff",   icon:"🪄",  slot:"mainhand", stats:{atk:7},  cls:["mage"],    desc:"A simple wooden staff."},
+  iron_bow:     {name:"Iron Bow",    icon:"🏹",  slot:"mainhand", stats:{atk:11}, cls:["archer"],  desc:"Requires arrows equipped."},
+  bronze_bow:   {name:"Bronze Bow",   icon:"🏹",  slot:"mainhand", stats:{atk:7},  cls:["archer"],  desc:"A basic bronze bow."},
+  // off hand
+  iron_shield:  {name:"Iron Shield", icon:"🛡",  slot:"offhand",  stats:{def:8},  cls:null,        desc:"A sturdy iron shield."},
+  bronze_shield:{name:"Bronze Shield",icon:"🛡",  slot:"offhand",  stats:{def:4},  cls:null,        desc:"A basic bronze shield."},
+  // helmet
+  leather_cap:  {name:"Leather Cap", icon:"🪖",  slot:"helmet",   stats:{def:2},  cls:null,        desc:"Basic head protection."},
+  iron_helm:    {name:"Iron Helm",   icon:"⛑",   slot:"helmet",   stats:{def:5,hp:4}, cls:["warrior","cleric"], desc:"Heavy iron helmet."},
+  // chest
+  leather_vest: {name:"Leather Vest",icon:"🧥",  slot:"chest",    stats:{def:3},  cls:null,        desc:"Light leather armor."},
+  iron_chest:   {name:"Iron Chestplate",icon:"🦺",slot:"chest",   stats:{def:8,hp:6}, cls:["warrior","cleric"], desc:"Full iron plate."},
+  // legs
+  leather_legs: {name:"Leather Legs",icon:"👖",  slot:"legs",     stats:{def:2},  cls:null,        desc:"Flexible leg guards."},
+  iron_legs:    {name:"Iron Greaves",icon:"🦵",  slot:"legs",     stats:{def:5,hp:2}, cls:["warrior","cleric"], desc:"Heavy leg armor."},
+  // boots
+  leather_boots:{name:"Leather Boots",icon:"👢", slot:"boots",    stats:{def:1,spd:1},cls:null,     desc:"Light travel boots."},
+  iron_boots:   {name:"Iron Boots",  icon:"🥾",  slot:"boots",    stats:{def:3},  cls:["warrior","cleric"], desc:"Heavy iron boots."},
+  // gloves
+  leather_gloves:{name:"Leather Gloves",icon:"🧤",slot:"gloves",  stats:{atk:1,def:1},cls:null,    desc:"Improve grip."},
+  iron_gauntlets:{name:"Iron Gauntlets",icon:"✊",slot:"gloves",   stats:{atk:2,def:2},cls:["warrior","cleric"],desc:"Heavy iron gloves."},
+  // necklace
+  copper_amulet:{name:"Copper Amulet",icon:"📿", slot:"necklace", stats:{hp:5},   cls:null,        desc:"Boosts vitality slightly."},
+  // ring
+  iron_ring:    {name:"Iron Ring",   icon:"💍",  slot:"ring",     stats:{atk:1,def:1},cls:null,     desc:"A simple iron ring."},
+  // ammo
+  iron_arrows:  {name:"Iron Arrows", icon:"🏹",  slot:"ammo",     stats:{atk:2},  cls:["archer"],  desc:"20 iron-tipped arrows."},
+  fire_runes:   {name:"Fire Runes",  icon:"🔥",  slot:"ammo",     stats:{atk:3},  cls:["mage"],    desc:"Enhances fire spells."},
+  cooked_shrimp:{name:"Cooked Shrimp",icon:"🍤",slot:"consumable",stats:{hp:10}, cls:null, desc:"Restores 10 HP in battle."},
+  cooked_bass:  {name:"Cooked Bass",  icon:"🐠",slot:"consumable",stats:{hp:25}, cls:null, desc:"Restores 25 HP in battle."},
+};
+
+// Slot display config: label, position in paper doll grid
+// Grid is 3x4: col 0-2, row 0-3
+var SLOT_CONFIG=[
+  {id:"helmet",   label:"Helmet",   col:1,row:0, icon:"🪖"},
+  {id:"necklace", label:"Necklace", col:0,row:1, icon:"📿"},
+  {id:"chest",    label:"Chest",    col:1,row:1, icon:"🧥"},
+  {id:"gloves",   label:"Gloves",   col:2,row:1, icon:"🧤"},
+  {id:"mainhand", label:"Main",     col:0,row:2, icon:"⚔"},
+  {id:"legs",     label:"Legs",     col:1,row:2, icon:"👖"},
+  {id:"offhand",  label:"Off",      col:2,row:2, icon:"🛡"},
+  {id:"boots",    label:"Boots",    col:0,row:3, icon:"👢"},
+  {id:"ring",     label:"Ring",     col:1,row:3, icon:"💍"},
+  {id:"ammo",     label:"Ammo",     col:2,row:3, icon:"🏹"},
 ];
+
+function calcStats(u){
+  // recalculate unit stats from base + equipped items
+  var base={warrior:{hp:30,atk:8,def:4},mage:{hp:18,atk:13,def:2},archer:{hp:22,atk:9,def:3},cleric:{hp:24,atk:6,def:5}}[u.cls]||{hp:20,atk:5,def:2};
+  var lvBonus=(u.level-1);
+  var stats={atk:base.atk+lvBonus*2, def:base.def+lvBonus, mhp:base.hp+lvBonus*5};
+  if(u.equipped){
+    Object.values(u.equipped).forEach(function(itemId){
+      if(!itemId)return;
+      var item=ITEMS[itemId];if(!item)return;
+      if(item.stats.atk)stats.atk+=item.stats.atk;
+      if(item.stats.def)stats.def+=item.stats.def;
+      if(item.stats.hp)stats.mhp+=item.stats.hp;
+    });
+  }
+  return stats;
+}
+
+function equipItem2(uid,itemId){
+  var u=null;G.players.forEach(function(pl){pl.units.forEach(function(x){if(x.id===uid)u=x;});});
+  if(!u)return;
+  var item=ITEMS[itemId];if(!item)return;
+  // check class restriction
+  if(item.cls&&item.cls.indexOf(u.cls)<0){notify("That item can't be used by "+u.cls+"!");return;}
+  // check inventory
+  var invKey=itemId;
+  if(!(G.inventory&&G.inventory[invKey]>0)){notify("You don't have that item!");return;}
+  // unequip old item in that slot first
+  var oldItem=u.equipped[item.slot];
+  if(oldItem){
+    G.inventory[oldItem]=(G.inventory[oldItem]||0)+1;
+  }
+  // equip new item
+  u.equipped[item.slot]=itemId;
+  G.inventory[invKey]--;
+  if(G.inventory[invKey]<=0)delete G.inventory[invKey];
+  // recalc stats
+  var st=calcStats(u);
+  var oldHp=u.hp;
+  u.atk=st.atk;u.def=st.def;u.mhp=st.mhp;
+  u.hp=Math.min(u.hp,u.mhp);
+  notify(u.name+" equipped "+item.name+"!");
+  saveGame();renderHub();
+  // refresh the modal
+  showUnitModal(uid);
+}
+
+function unequipItem(uid,slot){
+  var u=null;G.players.forEach(function(pl){pl.units.forEach(function(x){if(x.id===uid)u=x;});});
+  if(!u||!u.equipped[slot])return;
+  var itemId=u.equipped[slot];
+  var item=ITEMS[itemId];
+  if(!G.inventory)G.inventory={};
+  G.inventory[itemId]=(G.inventory[itemId]||0)+1;
+  u.equipped[slot]=null;
+  var st=calcStats(u);u.atk=st.atk;u.def=st.def;u.mhp=st.mhp;u.hp=Math.min(u.hp,u.mhp);
+  notify(u.name+" unequipped "+(item?item.name:itemId));
+  saveGame();renderHub();showUnitModal(uid);
+}
 var PC=["#6a4aff","#ff4a6a","#4aff88","#ffaa22"];
 var CC={warrior:"#6a8aff",mage:"#cc66ff",archer:"#44ff88",cleric:"#ffcc44"};
 
 // ── PLAYER POSITIONS (pixel coords on map image) ──────────────────────
 // Players start at Ashenvale
-var START_PX=97, START_PY=332;
+var START_PX=125, START_PY=375;
 
 // ── STATE ─────────────────────────────────────────────────────────────
 var G={players:[],active:0,gold:60,
-  resources:{iron:0,wood:0,fish:0,bar:0,sword:0,shield:0,bow:0,staff:0,mace:0},
+  inventory:{},
+  currentTown:null, // which town player is currently in
+  resources:{
+    // Ashenvale tier
+    bronze_ore:0, logs:0, shrimp:0, bronze_bar:0,
+    cooked_shrimp:0,
+    // Ironhold tier
+    iron_ore:0, oak_logs:0, bass:0, iron_bar:0,
+    cooked_bass:0,
+  },
   quests:JSON.parse(JSON.stringify(QUESTS)),cleared:{},wTurn:1,lastTick:Date.now(),crafting:null};
 
 function mkUnit(name,cls,pid){
   var s={warrior:{hp:30,atk:8,def:4,rng:1},mage:{hp:18,atk:13,def:2,rng:3},archer:{hp:22,atk:9,def:3,rng:4},cleric:{hp:24,atk:6,def:5,rng:2}}[cls];
   return{id:Math.random().toString(36).slice(2),name:name,cls:cls,pid:pid,level:1,xp:0,hp:s.hp,mhp:s.hp,atk:s.atk,def:s.def,rng:s.rng,weapon:"Fists",armor:"Cloth",
-    skills:{mining:0,woodcutting:0,fishing:0,smithing:0,crafting:0},
-    skillXp:{mining:0,woodcutting:0,fishing:0,smithing:0,crafting:0},assignedSkill:null};
+    equipped:{helmet:null,necklace:null,chest:null,gloves:null,mainhand:null,offhand:null,legs:null,boots:null,ring:null,ammo:null},
+    skills:{mining:1,woodcutting:1,fishing:1,smithing:1,crafting:1},
+    skillXp:{mining:0,woodcutting:0,fishing:0,smithing:0,crafting:0},assignedSkill:null,
+    abilityCooldown:0};
 }
-function mkPlayer(name,col,idx){
-  var cls=["warrior","mage","archer","cleric"][idx%4];
-  // Each player starts near Ashenvale with slight offset
+function mkPlayer(name,col,idx,cls){
+  cls=cls||["warrior","mage","archer","cleric"][idx%4];
   var offsets=[[0,0],[12,0],[0,12],[12,12]];
   return{name:name,col:col,idx:idx,cls:cls,
     px:START_PX+offsets[idx][0], py:START_PY+offsets[idx][1],
-    steps:5,units:[mkUnit(name[0]+"arik",cls,idx),mkUnit(name[0]+"yra","cleric",idx)]};
+    startPx:START_PX+offsets[idx][0], startPy:START_PY+offsets[idx][1],
+    steps:5,maxSteps:5,units:[mkUnit(name[0]+"arik",cls,idx),mkUnit(name[0]+"yra","cleric",idx)]};
 }
 
 // ── SETUP ─────────────────────────────────────────────────────────────
@@ -374,8 +779,10 @@ function renderSetup(){
     h+='<div style="width:10px;height:10px;border-radius:50%;background:'+PC[i]+';flex-shrink:0"></div>';
     h+='<input type="text" value="'+p.name+'" style="flex:1" onchange="SD['+i+'].name=this.value">';
     h+='<select onchange="SD['+i+'].cls=this.value">';
-    h+='<option value="warrior">Warrior</option><option value="mage">Mage</option>';
-    h+='<option value="archer">Archer</option><option value="cleric">Cleric</option></select>';
+    ['warrior','mage','archer','cleric'].forEach(function(c){
+      h+='<option value="'+c+'"'+(SD[i].cls===c?' selected':'')+'>'+c.charAt(0).toUpperCase()+c.slice(1)+'</option>';
+    });
+    h+='</select>';
     if(i>0)h+='<button class="btn sm red" onclick="SD.splice('+i+',1);renderSetup()">✕</button>';
     h+='</div>';
   });
@@ -384,20 +791,38 @@ function renderSetup(){
 }
 function addSP(){if(SD.length<4){SD.push({name:"Player "+(SD.length+1),cls:"warrior"});renderSetup();}}
 function beginGame(){
-  G.players=SD.map(function(p,i){return mkPlayer(p.name,PC[i],i);});
+  G.players=SD.map(function(p,i){return mkPlayer(p.name,PC[i],i,p.cls);});
   G.quests=JSON.parse(JSON.stringify(QUESTS));
   G.cleared={};G.gold=60;G.crafting=null;
   initCollision();
   initFog();
-  // reveal starting area around Ashenvale
-  G.players.forEach(function(p){revealFog(p.px,p.py,120);});
+  // reset steps on all players
+  G.players.forEach(function(p){
+    p.steps=5;p.maxSteps=5;
+    p.startPx=p.px;p.startPy=p.py;
+    revealFog(p.px,p.py,30);
+  });
+  // mark initial reveal as permanently seen
+  if(FOG){for(var ii=0;ii<FOG.length;ii++){if(FOG[ii]===2)FOG[ii]=1;}}
   showScreen('s-game');
-  setTimeout(function(){drawWorld();updWUI();renderHub();},80);
+  setTimeout(function(){
+    drawWorld();updWUI();renderHub();
+    if(!openSections['quests'])toggleSection('quests');
+    if(!openSections['res'])toggleSection('res');
+    updateTownSections();
+  },80);
   setInterval(gameTick,500);
   wlog("Welcome to Eldara! "+G.players[0].name+" goes first.","hi");
 }
 function loadGame(){
-  try{var s=localStorage.getItem("ff5");if(s){G=JSON.parse(s);G.lastTick=Date.now();initCollision();if(!G.fogData){initFog();G.players.forEach(function(p){revealFog(p.px,p.py,120);});}else{FOG=new Uint8Array(G.fogData);}showScreen('s-game');setTimeout(function(){drawWorld();updWUI();renderHub();},80);setInterval(gameTick,500);wlog("Game loaded.","hi");return;}}catch(e){}
+  try{var s=localStorage.getItem("ff5");if(s){G=JSON.parse(s);G.lastTick=Date.now();
+      // fix stale steps from old saves
+      G.players.forEach(function(p){
+        if(!p.maxSteps)p.maxSteps=5;
+        if(p.steps<=0)p.steps=p.maxSteps;
+        if(!p.startPx){p.startPx=p.px;p.startPy=p.py;}
+      });
+      initCollision();if(!G.fogData){initFog();G.players.forEach(function(p){revealFog(p.px,p.py,30);});}else{FOG=new Uint8Array(G.fogData);}showScreen('s-game');setTimeout(function(){drawWorld();updWUI();renderHub();},80);setInterval(gameTick,500);wlog("Game loaded.","hi");return;}}catch(e){}
   notify("No save found.");
 }
 function saveGame(){
@@ -513,21 +938,31 @@ function drawWorld(){
 
   // draw location markers
   LOCS.forEach(function(loc){
-    // don't show location if still in heavy fog
     var locFog=getFogAlpha(loc.px,loc.py);
-    if(locFog>0.7)return;
+    if(locFog>0.7)return; // completely hidden
     var sx=offX+loc.px*scale;
     var sy=offY+loc.py*scale;
     var cleared=G.cleared[loc.name];
+    var fullyRevealed=locFog<0.3;
     var r=scale*14;
-    wctx.strokeStyle=loc.type==='town'?"rgba(255,200,50,0.6)":cleared?"rgba(50,255,100,0.5)":"rgba(180,50,255,0.5)";
+    // ring color
+    var ringCol=fullyRevealed
+      ?(loc.type==='town'?"rgba(255,200,50,0.8)":cleared?"rgba(50,255,100,0.7)":"rgba(180,50,255,0.7)")
+      :"rgba(150,150,150,0.5)"; // grey for partially seen
+    wctx.strokeStyle=ringCol;
     wctx.lineWidth=2;
+    wctx.setLineDash(fullyRevealed?[]:[4,3]); // dashed if not fully revealed
     wctx.beginPath();wctx.arc(sx,sy,r,0,Math.PI*2);wctx.stroke();
-    // label
-    wctx.fillStyle=loc.type==='town'?"#ffe066":cleared?"#44ff88":"#cc44ff";
+    wctx.setLineDash([]);
+    // label - show ??? if partially revealed, real name if fully revealed
+    var label=fullyRevealed?loc.name:"???";
+    var labelCol=fullyRevealed
+      ?(loc.type==='town'?"#ffe066":cleared?"#44ff88":"#cc44ff")
+      :"#888888";
+    wctx.fillStyle=labelCol;
     wctx.font="bold "+Math.max(9,Math.round(scale*11))+"px sans-serif";
     wctx.textAlign="center";wctx.textBaseline="top";
-    wctx.fillText(loc.name,sx,sy+r+2);
+    wctx.fillText(label,sx,sy+r+2);
   });
 
   // draw players
@@ -577,7 +1012,19 @@ function onWClick(e){
   // check if clicked near a location
   var hitR=18;
   var loc=LOCS.find(function(l){return Math.abs(l.px-mapX)<hitR&&Math.abs(l.py-mapY)<hitR;});
-  if(loc)showLocModal(loc);
+  if(loc){
+    var fogLevel=getFogAlpha(loc.px,loc.py);
+    if(fogLevel>0.7){
+      notify("Explore further to reveal this location!");
+      return;
+    }
+    // move player to the clicked location
+    var p=G.players[G.active];
+    p.px=loc.px;p.py=loc.py;
+    revealFog(p.px,p.py,45);
+    drawWorld();updWUI();
+    showLocModal(loc);
+  }
 }
 
 // Move player toward clicked direction (arrow buttons)
@@ -585,17 +1032,49 @@ function onWClick(e){
 var MOVE_STEP=18; // pixels per step on 768x512 image
 function mv(dx,dy){
   var p=G.players[G.active];
-  if(p.steps<=0){notify("No steps left!");return;}
+  if(p.steps<=0){notify("No steps left — end your turn!");return;}
+  // save start position + fog snapshot before first step of this turn
+  if(p.steps===(p.maxSteps||5)){
+    p.startPx=p.px;p.startPy=p.py;
+    window._turnFogSnap=saveFogSnapshot();
+    window._turnDiscovered=[]; // track locations found this turn
+  }
   var nx=Math.max(20,Math.min(MAP_IMG_W-20,p.px+dx*MOVE_STEP));
   var ny=Math.max(20,Math.min(MAP_IMG_H-20,p.py+dy*MOVE_STEP));
   if(!isWalkable(nx,ny)){notify("Can't move there — water blocks the way!");return;}
   p.px=nx;p.py=ny;p.steps--;
-  revealFog(p.px,p.py,110);
+  revealFog(p.px,p.py,28);
+  // show end turn bar when steps hit 0
+  updateEndTurnBar(p);
   // check if near a location
   var nearby=LOCS.find(function(l){return Math.abs(l.px-p.px)<22&&Math.abs(l.py-p.py)<22;});
-  document.getElementById('btn-enter').style.display=nearby?'inline-block':'none';
-  document.getElementById('w-loc').textContent=nearby?nearby.name:"";
-  if(nearby){wlog(p.name+" arrived at "+nearby.name+"!","good");revealFog(p.px,p.py,160);if(nearby.name==="Ironhold"&&!G.quests[2].done)completeQuest(2);}
+  // only show enter button if fog is lifted enough
+  var nearbyFog=nearby?getFogAlpha(nearby.px,nearby.py):1;
+  document.getElementById('btn-enter').style.display=(nearby&&nearbyFog<=0.7)?'inline-block':'none';
+  document.getElementById('w-loc').textContent=(nearby&&nearbyFog<=0.7)?nearby.name:"";
+  if(nearby){
+    revealFog(p.px,p.py,45);
+    if(nearbyFog<=0.7){
+      var arrKey='arr_'+nearby.name+'_T'+G.wTurn+'_P'+G.active;
+      if(!window[arrKey]){
+        window[arrKey]=true;
+        wlog(p.name+" arrived at "+nearby.name+"!","good");
+        if(nearby.name==="Ironhold"&&!G.quests[2].done)completeQuest(2);
+      }
+    }
+  }
+  // check if player walked away from town - clear currentTown if so
+  if(G.currentTown){
+    var stillNearTown=LOCS.find(function(l){
+      return l.type==='town'&&l.name===G.currentTown&&
+             Math.abs(l.px-p.px)<30&&Math.abs(l.py-p.py)<30;
+    });
+    if(!stillNearTown){
+      wlog("Left "+G.currentTown+" — skills paused.","hi");
+      G.currentTown=null;
+      updateTownSections();
+    }
+  }
   drawWorld();updWUI();saveGame();
 }
 
@@ -609,11 +1088,73 @@ document.addEventListener('keydown',function(e){
   if(moved)e.preventDefault();
 });
 
+function updateEndTurnBar(p){
+  var bar=document.getElementById('end-turn-bar');
+  var nameEl=document.getElementById('eot-name');
+  if(!bar)return;
+  if(p.steps<=0){
+    if(nameEl)nameEl.textContent=p.name+"'s turn is over";
+    bar.style.display='flex';
+  } else {
+    bar.style.display='none';
+  }
+}
+
+function resetTurn(){
+  var p=G.players[G.active];
+  if(p.startPx===undefined){notify("Nothing to reset!");return;}
+  // restore position
+  p.px=p.startPx;
+  p.py=p.startPy;
+  p.steps=p.maxSteps||5;
+  // restore fog to start-of-turn snapshot
+  if(window._turnFogSnap){
+    restoreFogSnapshot(window._turnFogSnap);
+    window._turnFogSnap=null;
+  }
+  // un-discover locations found this turn
+  // (re-fog them so they show ??? again if they were just discovered)
+  if(window._turnDiscovered&&window._turnDiscovered.length>0){
+    // nothing to undo for quest completion but re-hide newly seen locations
+    // by checking fog - if restored fog hides them they'll auto-hide in draw
+    window._turnDiscovered=[];
+  }
+  // hide end turn bar
+  var bar=document.getElementById('end-turn-bar');
+  if(bar)bar.style.display='none';
+  // recheck nearby location at reset position
+  var resetFog=getFogAlpha(p.startPx,p.startPy);
+  var nearby=LOCS.find(function(l){return Math.abs(l.px-p.px)<22&&Math.abs(l.py-p.py)<22;});
+  var nearbyVisible=nearby&&getFogAlpha(nearby.px,nearby.py)<=0.7;
+  document.getElementById('btn-enter').style.display=nearbyVisible?'inline-block':'none';
+  document.getElementById('w-loc').textContent=nearbyVisible?nearby.name:"";
+  // reset the turn hash so party strip redraws
+  window._lastPH=null;
+  drawWorld();updWUI();
+  notify("Turn reset — fog and position restored.");
+}
+
 function endWTurn(){
+  var bar=document.getElementById('end-turn-bar');
+  if(bar)bar.style.display='none';
+  // leaving town when ending turn
+  if(G.currentTown){
+    wlog("Left "+G.currentTown+" — skills paused.","hi");
+    G.currentTown=null;
+    updateTownSections();
+  }
+  // transition currently-visible fog to seen at end of turn
+  if(FOG){for(var fi=0;fi<FOG.length;fi++){if(FOG[fi]===2)FOG[fi]=1;}}
   var p=G.players[G.active];wlog(p.name+" ended turn.");
   G.active=(G.active+1)%G.players.length;
   if(G.active===0)G.wTurn++;
-  var np=G.players[G.active];np.steps=5;
+  var np=G.players[G.active];
+  np.steps=np.maxSteps||5;
+  // save fresh start position for new player
+  np.startPx=np.px;np.startPy=np.py;
+  // clear turn tracking for new player
+  window._turnFogSnap=null;
+  window._turnDiscovered=[];
   wlog("--- "+np.name+"'s turn (T"+G.wTurn+") ---");
   var nearby=LOCS.find(function(l){return Math.abs(l.px-np.px)<22&&Math.abs(l.py-np.py)<22;});
   document.getElementById('btn-enter').style.display=nearby?'inline-block':'none';
@@ -633,7 +1174,7 @@ function wlog(m,cls){
 function openLoc(){
   var p=G.players[G.active];
   var loc=LOCS.find(function(l){return Math.abs(l.px-p.px)<22&&Math.abs(l.py-p.py)<22;});
-  if(loc)showLocModal(loc);
+  if(loc&&getFogAlpha(loc.px,loc.py)<=0.7)showLocModal(loc);
 }
 function showLocModal(loc){
   window._loc=loc;
@@ -668,12 +1209,25 @@ function showLocModal(loc){
   }
 }
 function enterTown(){
-  document.getElementById('w-loc').textContent=window._loc?window._loc.name:"Town";
+  var townName=window._loc?window._loc.name:"";
+  G.currentTown=townName;
+  document.getElementById('w-loc').textContent=townName;
+  updateTownSections();
   renderHub();
-  // open forge and quests by default
+  if(!openSections['skills'])toggleSection('skills');
   if(!openSections['forge'])toggleSection('forge');
-  if(!openSections['quests'])toggleSection('quests');
-  notify("Welcome to "+window._loc.name+"!");
+  notify("Welcome to "+townName+"! Skills and forge now active.");
+  wlog("Entered "+townName+".","good");
+  saveGame();
+}
+
+function updateTownSections(){
+  var inTown=!!G.currentTown;
+  // show/hide skills and forge sections
+  var skillsEl=document.getElementById('hub-skills-wrap');
+  var forgeEl=document.getElementById('hub-forge-wrap');
+  if(skillsEl)skillsEl.style.display=inTown?'block':'none';
+  if(forgeEl)forgeEl.style.display=inTown?'block':'none';
 }
 
 // ── HUB ───────────────────────────────────────────────────────────────
@@ -719,51 +1273,136 @@ function renderPartyStrip(){
   p.units.forEach(function(u){
     var hpPct=Math.round(u.hp/u.mhp*100);
     var hpCol=hpPct>60?"#44ff88":hpPct>30?"#ffcc22":"#ff4444";
-    h+='<div class="ucard _uc" onclick="_act(this)" data-fn="showUnitModal" data-id="'+u.id+'">';
+    var st=calcStats(u);
+
+    // build equipped gear bonus string
+    var bonuses=[];
+    var slotIcons={helmet:"⛑",necklace:"📿",chest:"🧥",gloves:"🧤",
+                   mainhand:"⚔",offhand:"🛡",legs:"👖",boots:"👢",ring:"💍",ammo:"🏹"};
+    if(u.equipped){
+      Object.keys(u.equipped).forEach(function(slot){
+        var itemId=u.equipped[slot];if(!itemId)return;
+        var item=ITEMS[itemId];if(!item)return;
+        var statParts=Object.keys(item.stats).map(function(k){
+          return'+'+item.stats[k]+k.toUpperCase().slice(0,3);
+        }).join(' ');
+        bonuses.push(slotIcons[slot]||'·')+' '+statParts;
+        bonuses[bonuses.length-1]=(slotIcons[slot]||'·')+' '+statParts;
+      });
+    }
+
+    h+='<div class="ucard _uc" onclick="_act(this)" data-fn="showUnitModal" data-id="'+u.id+'" style="display:flex;gap:6px;align-items:flex-start">';
+    // left: sprite canvas
+    h+='<canvas class="unit-sprite-cv" data-uid="'+u.id+'" width="44" height="56" style="flex-shrink:0;background:#050510;border-radius:4px;image-rendering:pixelated"></canvas>';
+    // middle: name + stats
+    h+='<div style="flex:1;min-width:0">';
     h+='<div style="font-size:12px;font-weight:600;color:'+CC[u.cls]+'">'+u.name+'</div>';
     h+='<div class="muted">Lv '+u.level+' '+u.cls+'</div>';
     h+='<div class="hpbar"><div class="hpfill" style="width:'+hpPct+'%;background:'+hpCol+'"></div></div>';
-    h+='<div class="muted" style="margin-top:2px">ATK:'+u.atk+' DEF:'+u.def+'</div></div>';
+    h+='<div class="muted" style="margin-top:2px">ATK:'+st.atk+' DEF:'+st.def+' HP:'+u.hp+'/'+st.mhp+'</div>';
+    h+='</div>';
+    // right: equipped bonuses (only if any)
+    if(bonuses.length>0){
+      h+='<div style="font-size:10px;color:#ffcc44;line-height:1.6;flex-shrink:0;max-width:80px;text-align:right">';
+      bonuses.forEach(function(b){h+='<div>'+b+'</div>';});
+      h+='</div>';
+    }
+    h+='</div>';
   });
   document.getElementById('unit-cards').innerHTML=h;
+
+  // draw sprites on the small canvases
+  setTimeout(function(){
+    p.units.forEach(function(u){
+      var cv=document.querySelector('.unit-sprite-cv[data-uid="'+u.id+'"]');
+      if(!cv)return;
+      var ctx=cv.getContext('2d');ctx.imageSmoothingEnabled=false;
+      ctx.fillStyle='#050510';ctx.fillRect(0,0,44,56);
+      var img=SP[u.cls];
+      if(img){var sc=50/img.height,sw=img.width*sc;ctx.drawImage(img,22-sw/2,3,sw,50);}
+    });
+  },30);
 }
 function renderResources(){
-  var items=[["iron","⛏ Iron"],["wood","🪵 Wood"],["fish","🐟 Fish"],["bar","🔩 Bar"],["sword","⚔ Sword"],["shield","🛡 Shield"],["bow","🏹 Bow"],["staff","🪄 Staff"],["mace","🔨 Mace"]];
+  var items=[
+    ["bronze_ore","⛏ Bronze Ore"],["logs","🪵 Logs"],["shrimp","🦐 Shrimp"],
+    ["bronze_bar","🔩 Bronze Bar"],["cooked_shrimp","🍤 Cooked Shrimp"],
+    ["iron_ore","⛏ Iron Ore"],["oak_logs","🌳 Oak Logs"],["bass","🐟 Bass"],
+    ["iron_bar","🔩 Iron Bar"],["cooked_bass","🐠 Cooked Bass"],
+  ];
   var h="";
   items.forEach(function(it){
     var v=Math.floor(G.resources[it[0]]||0);
-    if(v>0||['iron','wood','fish'].indexOf(it[0])>=0)
-      h+='<div class="res-row"><span>'+it[1]+'</span><strong class="gold-text">'+v+'</strong></div>';
+    if(v>0) h+='<div class="res-row"><span>'+it[1]+'</span><strong class="gold-text">'+v+'</strong></div>';
   });
-  document.getElementById('res-list').innerHTML=h||'<div class="muted">No resources yet</div>';
+  // also show inventory items
+  if(G.inventory){
+    Object.keys(G.inventory).forEach(function(k){
+      var qty=G.inventory[k];if(!qty||qty<=0)return;
+      var item=ITEMS[k];if(!item)return;
+      h+='<div class="res-row"><span>'+item.icon+' '+item.name+'</span><strong class="gold-text">'+qty+'</strong></div>';
+    });
+  }
+  document.getElementById('res-list').innerHTML=h||'<div class="muted">No resources yet — visit a town to gather!</div>';
 }
 function renderSkillList(){
-  var h="";
+  if(!G.currentTown){
+    document.getElementById('sk-list').innerHTML='<div class="muted" style="padding:6px">Visit a town to gather resources.</div>';
+    return;
+  }
+  var h='<div style="font-size:11px;color:#aa88ff;margin-bottom:6px">'+G.currentTown+' — available skills</div>';
   Object.keys(SKILL_INFO).forEach(function(sk){
-    var r=SKILL_INFO[sk];
+    var info=SKILL_INFO[sk];
     var assigned=[];
-    G.players.forEach(function(pl){pl.units.forEach(function(u){if(u.assignedSkill===sk)assigned.push(u.name);});});
-    h+='<div class="skill-row '+(assigned.length?'active-sk':'')+' _skr" onclick="_act(this)" data-fn="drillSkill" data-sk="'+sk+'">';
-    h+='<div class="row"><span>'+r.icon+' <strong>'+r.label+'</strong></span>';
-    h+='<span class="muted" style="margin-left:auto">+'+r.res+'/s</span></div>';
-    if(assigned.length)h+='<div class="green-text" style="font-size:11px;margin-top:3px">'+assigned.join(", ")+'</div>';
+    G.players.forEach(function(pl){pl.units.forEach(function(u){if(u.assignedSkill===sk)assigned.push({name:u.name,lvl:u.skills[sk]||0});});});
+    // each skill checks its OWN level independently
+    var skillLvl=getPartySkillLevel(sk);
+    var tier=getSkillTier(sk,G.currentTown,skillLvl);
+    var lockedTier=info.tiers.find(function(t){return t.town===G.currentTown&&skillLvl<t.reqLvl;});
+    var isActive=assigned.length>0&&tier!=null;
+    h+='<div class="skill-row '+(isActive?'active-sk':'')+' _skr" onclick="_act(this)" data-fn="drillSkill" data-sk="'+sk+'">';
+    h+='<div class="row"><span>'+info.icon+' <strong>'+info.label+'</strong></span>';
+    if(tier){
+      h+='<span class="green-text" style="margin-left:auto;font-size:11px">+'+tier.label+'</span>';
+    } else if(lockedTier){
+      h+='<span class="red-text" style="margin-left:auto;font-size:11px">Req lvl '+lockedTier.reqLvl+'</span>';
+    } else {
+      h+='<span class="muted" style="margin-left:auto;font-size:11px">not available</span>';
+    }
+    h+='</div>';
+    if(isActive)h+='<div class="green-text" style="font-size:11px;margin-top:3px">'+assigned.map(function(a){return a.name+' (lvl '+a.lvl+')';}).join(", ")+'</div>';
     h+='</div>';
   });
   document.getElementById('sk-list').innerHTML=h;
 }
 function drillSkill(sk){
-  window._curSkill=sk;var r=SKILL_INFO[sk];
-  document.getElementById('sk-detail-title').textContent=r.icon+" "+r.label;
-  var h='<div class="muted" style="margin-bottom:8px">Assign units to gather '+r.res+' passively.</div>';
+  if(!G.currentTown){notify("Visit a town first!");return;}
+  window._curSkill=sk;var info=SKILL_INFO[sk];
+  document.getElementById('sk-detail-title').textContent=info.icon+" "+info.label;
+  // use this specific skill's own level - not a shared level
+  var skillLvl=getPartySkillLevel(sk);
+  var tier=getSkillTier(sk,G.currentTown,skillLvl);
+  var locked=!tier;
+  var reqLvl=locked?(info.tiers.find(function(t){return t.town===G.currentTown;})||{reqLvl:"?"}).reqLvl:null;
+  var h='';
+  if(locked){
+    h+='<div class="red-text" style="margin-bottom:8px">Requires level '+reqLvl+' to gather here.</div>';
+  } else {
+    h+='<div class="muted" style="margin-bottom:8px">Gathering: <strong class="green-text">'+tier.label+'</strong> at '+G.currentTown+'</div>';
+  }
   var allU=[];G.players.forEach(function(pl){pl.units.forEach(function(u){allU.push({u:u,p:pl});});});
   allU.forEach(function(pu){
     var u=pu.u,p=pu.p;var active=u.assignedSkill===sk;
-    var lv=u.skills[sk]||0,xp=u.skillXp[sk]||0,need=(lv+1)*100,pct=Math.round(xp/need*100);
+    var lv=u.skills[sk]||1,xp=u.skillXp[sk]||0,need=lv*100,pct=Math.round(xp/need*100);
+    var unitTier=G.currentTown?getSkillTier(sk,G.currentTown,lv):null;
+    var unitLocked=!unitTier;
     h+='<div style="background:#080818;border:1px solid '+(active?'#4aff88':'#1a1a2e')+';border-radius:6px;padding:8px;margin-bottom:6px">';
     h+='<div class="row"><div style="width:8px;height:8px;border-radius:50%;background:'+p.col+'"></div>';
     h+='<strong style="color:'+CC[u.cls]+'">'+u.name+'</strong><span class="muted">Lv '+lv+'</span>';
-    h+='<button class="btn sm '+(active?'red':'gold')+' _ska" onclick="_act(this)" data-fn="toggleSkill" data-id="'+u.id+'" data-sk="'+sk+'" style="margin-left:auto">'+(active?'Stop':'Assign')+'</button></div>';
-    h+='<div class="xpbar" style="margin-top:6px"><div class="xpfill" style="width:'+pct+'%;background:'+r.color+'"></div></div>';
+    var btnLabel=active?'Stop':(unitLocked?'Lvl '+lv+'/10':'Assign');
+    var btnClass=active?'red':unitLocked?'':'gold';
+    h+='<button class="btn sm '+btnClass+' _ska" '+(unitLocked&&!active?'disabled style="opacity:.4"':'')+' onclick="_act(this)" data-fn="toggleSkill" data-id="'+u.id+'" data-sk="'+sk+'" style="margin-left:auto">'+btnLabel+'</button></div>';
+    h+='<div class="xpbar" style="margin-top:6px"><div class="xpfill" style="width:'+pct+'%;background:'+info.color+'"></div></div>';
     h+='<div class="muted" style="margin-top:2px">'+xp.toFixed(1)+'/'+need+' XP</div></div>';
   });
   document.getElementById('sk-detail-body').innerHTML=h;
@@ -771,14 +1410,24 @@ function drillSkill(sk){
   document.getElementById('sk-detail').classList.add('on');
 }
 function renderForgeList(){
-  var h="";
-  RECIPES.forEach(function(r){
+  var recipes=getRecipes();
+  if(!G.currentTown){
+    document.getElementById('forge-list').innerHTML='<div class="muted" style="padding:6px">Visit a town to use the forge.</div>';
+    return;
+  }
+  var h='<div style="font-size:11px;color:#aa88ff;margin-bottom:8px">'+G.currentTown+' Forge</div>';
+  recipes.forEach(function(r){
     var can=Object.keys(r.needs).every(function(k){return(G.resources[k]||0)>=r.needs[k];});
-    var needStr=Object.keys(r.needs).map(function(k){return k+" x"+r.needs[k];}).join(", ");
+    var needStr=Object.keys(r.needs).map(function(k){
+      var have=Math.floor(G.resources[k]||0);
+      var need=r.needs[k];
+      return '<span class="'+(have>=need?'green-text':'red-text')+'">'+k.replace('_',' ')+' '+have+'/'+need+'</span>';
+    }).join(' · ');
     h+='<div class="recipe _rec" onclick="_act(this)" data-fn="drillForge" data-id="'+r.id+'">';
     h+='<div class="row"><span>'+r.icon+' <strong>'+r.name+'</strong></span>';
-    h+=(can?'<span class="green-text" style="margin-left:auto;font-size:11px">Ready</span>':'<span class="muted" style="margin-left:auto;font-size:11px">'+needStr+'</span>');
+    h+=(can?'<span class="green-text" style="margin-left:auto;font-size:11px">Ready ✓</span>':'<span class="muted" style="margin-left:auto;font-size:11px">needs more</span>');
     h+='</div>';
+    h+='<div style="font-size:10px;margin-top:2px">'+needStr+'</div>';
     if(G.crafting&&G.crafting.id===r.id){
       var pct=Math.round(G.crafting.progress/G.crafting.total*100);
       h+='<div class="craft-bar"><div class="craft-fill" style="width:'+pct+'%"></div></div>';
@@ -789,7 +1438,8 @@ function renderForgeList(){
   document.getElementById('forge-list').innerHTML=h;
 }
 function drillForge(rid){
-  var r=RECIPES.find(function(x){return x.id===rid;});
+  var allR=[];Object.values(RECIPES).forEach(function(arr){allR=allR.concat(arr);});
+  var r=allR.find(function(x){return x.id===rid;});
   var can=Object.keys(r.needs).every(function(k){return(G.resources[k]||0)>=r.needs[k];});
   document.getElementById('forge-craft-title').textContent=r.icon+" "+r.name;
   var h='<div style="margin-bottom:10px">';
@@ -813,7 +1463,8 @@ function drillForge(rid){
   document.getElementById('forge-craft').classList.add('on');
 }
 function startCraft(rid){
-  var r=RECIPES.find(function(x){return x.id===rid;});
+  var allR2=[];Object.values(RECIPES).forEach(function(arr){allR2=allR2.concat(arr);});
+  var r=allR2.find(function(x){return x.id===rid;});
   if(!Object.keys(r.needs).every(function(k){return(G.resources[k]||0)>=r.needs[k];})){notify("Not enough materials!");return;}
   Object.keys(r.needs).forEach(function(k){G.resources[k]-=r.needs[k];});
   G.crafting={id:rid,progress:0,total:r.time*2};
@@ -843,58 +1494,189 @@ function renderQuestList(){
 function showUnitModal(uid){
   var u=null,p=null;
   G.players.forEach(function(pl){pl.units.forEach(function(x){if(x.id===uid){u=x;p=pl;}});});
-  if(!u)return;window._uid=uid;
-  var h='<div style="display:flex;gap:12px;margin-bottom:12px">';
-  h+='<canvas id="cv-um" width="80" height="100" style="background:#050510;border-radius:6px;flex-shrink:0"></canvas>';
-  h+='<div style="flex:1"><div style="font-size:18px;font-weight:700;color:'+CC[u.cls]+'">'+u.name+'</div>';
+  if(!u)return;
+  window._uid=uid;
+  var st=calcStats(u);
+
+  var h='<div style="display:flex;gap:10px;margin-bottom:12px;align-items:center">';
+  h+='<canvas id="cv-um" width="72" height="90" style="background:#050510;border-radius:6px;flex-shrink:0"></canvas>';
+  h+='<div style="flex:1">';
+  h+='<div style="font-size:17px;font-weight:700;color:'+CC[u.cls]+'">'+u.name+'</div>';
   h+='<div class="muted">'+u.cls+' · Level '+u.level+'</div>';
-  h+='<div class="g2" style="margin-top:6px">';
-  ['HP:'+u.hp+'/'+u.mhp,'ATK:'+u.atk,'DEF:'+u.def,'RNG:'+u.rng].forEach(function(s){h+='<div style="font-size:12px">'+s+'</div>';});
-  h+='</div><div class="muted" style="margin-top:4px">'+u.weapon+' · '+u.armor+'</div></div></div>';
-  h+='<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">';
-  if(G.resources.sword>0&&u.cls==="warrior"&&u.weapon!=="Iron Sword")
-    h+='<button class="btn sm gold _eq" onclick="_act(this)" data-fn="eqItem" data-res="sword" data-slot="weapon" data-name="Iron Sword" data-bonus="4">⚔ Iron Sword</button>';
-  if(G.resources.bow>0&&u.cls==="archer"&&u.weapon!=="Iron Bow")
-    h+='<button class="btn sm gold _eq" onclick="_act(this)" data-fn="eqItem" data-res="bow" data-slot="weapon" data-name="Iron Bow" data-bonus="4">🏹 Iron Bow</button>';
-  if(G.resources.staff>0&&u.cls==="mage"&&u.weapon!=="Oak Staff")
-    h+='<button class="btn sm gold _eq" onclick="_act(this)" data-fn="eqItem" data-res="staff" data-slot="weapon" data-name="Oak Staff" data-bonus="5">🪄 Oak Staff</button>';
-  if(G.resources.mace>0&&u.cls==="cleric"&&u.weapon!=="Iron Mace")
-    h+='<button class="btn sm gold _eq" onclick="_act(this)" data-fn="eqItem" data-res="mace" data-slot="weapon" data-name="Iron Mace" data-bonus="4">🔨 Iron Mace</button>';
-  if(G.resources.shield>0&&u.armor!=="Iron Shield")
-    h+='<button class="btn sm _eq" onclick="_act(this)" data-fn="eqItem" data-res="shield" data-slot="armor" data-name="Iron Shield" data-bonus="3">🛡 Shield</button>';
+  h+='<div style="display:flex;gap:10px;margin-top:6px;font-size:12px">';
+  h+='<span>❤ <strong>'+u.hp+'/'+st.mhp+'</strong></span>';
+  h+='<span>⚔ <strong>'+st.atk+'</strong></span>';
+  h+='<span>🛡 <strong>'+st.def+'</strong></span>';
+  h+='<span>🎯 <strong>'+u.rng+'</strong></span>';
+  h+='</div></div></div>';
+
+  // ── PAPER DOLL ────────────────────────────────────────────────────
+  h+='<div style="font-size:11px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Equipment</div>';
+  h+='<div style="position:relative;background:#080818;border:1px solid #1a1a2e;border-radius:8px;padding:10px;margin-bottom:12px">';
+
+  // 3-col x 4-row grid
+  h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;position:relative">';
+
+  // draw silhouette placeholder in center (col 1, rows 0-3 overlay)
+  // We use a canvas in the center for the sprite
+  h+='<div style="grid-column:2;grid-row:1/5;display:flex;align-items:center;justify-content:center;position:relative">';
+  h+='<canvas id="cv-doll" width="60" height="120" style="background:#0a0a1a;border-radius:6px;border:1px solid #1a1a2e"></canvas>';
   h+='</div>';
-  h+='<div class="card-title">Skills</div>';
+
+  // Place slot buttons using grid
+  // Row 0: helmet (col1 center - but we push it above the doll)
+  h+='</div>'; // close grid
+
+  // Actually use absolute positioning approach for slots around the doll
+  h+='<div style="display:grid;grid-template-columns:1fr 80px 1fr;grid-template-rows:repeat(4,52px);gap:5px;align-items:center">';
+
+  // Col 0 (left slots): necklace, mainhand, boots, (empty)
+  var leftSlots=["necklace","mainhand","boots","ring"];
+  var rightSlots=["gloves","offhand","ammo",""];
+  var topSlot="helmet";
+  var midSlots=["chest","legs"];
+
+  // Render all slots
+  function slotBtn(slotId){
+    if(!slotId)return '<div></div>';
+    var sc=SLOT_CONFIG.find(function(s){return s.id===slotId;});
+    var equippedId=u.equipped&&u.equipped[slotId];
+    var item=equippedId?ITEMS[equippedId]:null;
+    var label=sc?sc.label:slotId;
+    var icon=item?item.icon:(sc?sc.icon:"·");
+    var col=item?"#ffcc44":"#333355";
+    var bg=item?"#1a1a00":"#080814";
+    var border=item?"#aa7700":"#1a1a2e";
+    var r='<div style="background:'+bg+';border:1px solid '+border+';border-radius:6px;padding:4px 5px;cursor:pointer;text-align:center;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center" ';
+    window._slotUid=uid;
+    if(item){
+      r+='onclick="unequipItem(window._slotUid,\''+slotId+'\')" title="Unequip '+item.name+'">';
+    } else {
+      r+='onclick="showSlotOptions(window._slotUid,\''+slotId+'\')">';
+    }
+    r+='<div style="font-size:16px">'+icon+'</div>';
+    r+='<div style="font-size:9px;color:'+col+';margin-top:1px;line-height:1.2;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(item?item.name:label)+'</div>';
+    if(item&&item.stats){
+      var statStr=Object.keys(item.stats).map(function(k){return"+"+item.stats[k]+k;}).join(" ");
+      r+='<div style="font-size:9px;color:#4aff88">'+statStr+'</div>';
+    }
+    r+='</div>';
+    return r;
+  }
+
+  // Row 1: helmet (spans center col, but we put it in col 2 of 3-col grid above doll)
+  // Use a 3x5 grid layout:
+  // row0: empty | HELMET | empty
+  // row1: NECKLACE | [DOLL] | GLOVES
+  // row2: MAINHAND | [DOLL] | OFFHAND
+  // row3: BOOTS | [DOLL] | AMMO
+  // row4: RING | CHEST+LEGS | (empty)
+
+  h='<div style="display:grid;grid-template-columns:1fr 80px 1fr;grid-template-rows:auto;gap:5px;align-items:start;position:relative">';
+
+  // Row 0: helmet centered
+  h+='<div></div>';
+  h+=slotBtn("helmet");
+  h+='<div></div>';
+
+  // Rows 1-3: left slots | doll canvas (span 3 rows) | right slots
+  h+='<div>'+slotBtn("necklace")+'</div>';
+  h+='<div style="grid-row:span 3;display:flex;align-items:center;justify-content:center">';
+  h+='<canvas id="cv-doll" width="68" height="150" style="background:#0a0a1a;border-radius:6px;border:1px solid #1a1a2e"></canvas></div>';
+  h+='<div>'+slotBtn("gloves")+'</div>';
+
+  h+='<div>'+slotBtn("mainhand")+'</div>';
+  h+='<div>'+slotBtn("offhand")+'</div>';
+
+  h+='<div>'+slotBtn("boots")+'</div>';
+  h+='<div>'+slotBtn("ammo")+'</div>';
+
+  // Row 4: ring | chest | legs
+  h+='<div>'+slotBtn("ring")+'</div>';
+  h+='<div>'+slotBtn("chest")+'</div>';
+  h+='<div>'+slotBtn("legs")+'</div>';
+
+  h+='</div>'; // end grid
+  h+='</div>'; // end paper doll container
+
+  // ── INVENTORY (items available to equip) ──────────────────────────
+  if(G.inventory&&Object.keys(G.inventory).length>0){
+    h+='<div style="font-size:11px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Inventory</div>';
+    h+='<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">';
+    Object.keys(G.inventory).forEach(function(itemId){
+      var qty=G.inventory[itemId];if(!qty||qty<=0)return;
+      var item=ITEMS[itemId];if(!item)return;
+      var canUse=!item.cls||(item.cls.indexOf(u.cls)>=0);
+      h+='<button class="btn sm '+(canUse?"gold":"")+'" '+(canUse?'onclick="_actEquip(this)" data-uid="'+uid+'" data-item="'+itemId+'"':'disabled title="Wrong class"')+' style="'+(canUse?"":"opacity:.4;")+'">';
+      h+=item.icon+' '+item.name+(qty>1?' x'+qty:'')+'</button>';
+    });
+    h+='</div>';
+  } else {
+    h+='<div class="muted" style="margin-bottom:10px">No items in inventory — craft some at the Forge!</div>';
+  }
+
+  // ── SKILLS ────────────────────────────────────────────────────────
+  h+='<div style="font-size:11px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Skills</div>';
   Object.keys(SKILL_INFO).forEach(function(sk){
-    var r=SKILL_INFO[sk];var lv=u.skills[sk]||0,xp=u.skillXp[sk]||0,need=(lv+1)*100,pct=Math.round(xp/need*100);
+    var r2=SKILL_INFO[sk];var lv=u.skills[sk]||1,xp=u.skillXp[sk]||0,need=lv*100,pct=Math.round(xp/need*100);
     var active=u.assignedSkill===sk;
-    h+='<div style="margin-bottom:8px"><div class="row"><span>'+r.icon+' '+r.label+'</span><span class="muted">Lv '+lv+'</span>';
-    h+='<button class="btn sm '+(active?'red':'gold')+' _ska" onclick="_act(this)" data-fn="toggleSkill" data-id="'+u.id+'" data-sk="'+sk+'" style="margin-left:auto">'+(active?'Stop':'Assign')+'</button></div>';
-    h+='<div class="xpbar" style="margin-top:4px"><div class="xpfill" style="width:'+pct+'%;background:'+r.color+'"></div></div></div>';
+    // check if this unit can use skill in current town
+    var modalTier=G.currentTown?getSkillTier(sk,G.currentTown,lv):null;
+    var modalLocked=!modalTier;
+    h+='<div style="margin-bottom:8px"><div class="row"><span>'+r2.icon+' '+r2.label+'</span><span class="muted">Lv '+lv+'</span>';
+    if(!G.currentTown){
+      h+='<span class="muted" style="margin-left:auto;font-size:11px">visit town</span>';
+    } else {
+      var btnLabel=active?'Stop':(modalLocked?'Lvl '+lv+'/10':'Assign');
+      var btnClass=active?'red':modalLocked?'':'gold';
+      h+='<button class="btn sm '+btnClass+' _ska" '+(modalLocked&&!active?'disabled style="opacity:.4"':'')+' onclick="_act(this)" data-fn="toggleSkill" data-id="'+u.id+'" data-sk="'+sk+'" style="margin-left:auto">'+btnLabel+'</button>';
+    }
+    h+='</div>';
+    h+='<div class="xpbar" style="margin-top:4px"><div class="xpfill" style="width:'+pct+'%;background:'+r2.color+'"></div></div></div>';
   });
+
   showModal(h);
+
+  // Draw sprite on paper doll canvas
   setTimeout(function(){
-    var cv=document.getElementById('cv-um');if(!cv)return;
-    var ctx=cv.getContext('2d');ctx.imageSmoothingEnabled=false;
-    ctx.fillStyle="#050510";ctx.fillRect(0,0,80,100);
-    var img=SP[u.cls];if(img){var sc=88/img.height,sw=img.width*sc;ctx.drawImage(img,40-sw/2,6,sw,88);}
+    var cv=document.getElementById('cv-um');
+    if(cv){var ctx=cv.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.fillStyle="#050510";ctx.fillRect(0,0,72,90);var img=SP[u.cls];if(img){var sc=82/img.height,sw=img.width*sc;ctx.drawImage(img,36-sw/2,4,sw,82);}}
+    var doll=document.getElementById('cv-doll');
+    if(doll){var ctx2=doll.getContext('2d');ctx2.imageSmoothingEnabled=false;ctx2.fillStyle="#0a0a1a";ctx2.fillRect(0,0,68,150);var img2=SP[u.cls];if(img2){var sc2=130/img2.height,sw2=img2.width*sc2;ctx2.drawImage(img2,34-sw2/2,10,sw2,130);}}
   },50);
 }
 
 // ── GAME TICK ─────────────────────────────────────────────────────────
 function gameTick(){
   var now=Date.now(),dt=(now-G.lastTick)/1000;G.lastTick=now;
-  G.players.forEach(function(p){p.units.forEach(function(u){
-    if(u.assignedSkill&&SKILL_INFO[u.assignedSkill]){
-      var r=SKILL_INFO[u.assignedSkill];
-      G.resources[r.res]=(G.resources[r.res]||0)+r.rate*dt*(1+(u.skills[u.assignedSkill]||0)*0.1);
-      grantSkXp(u,u.assignedSkill,r.rate*dt*3);
-    }
-  });});
+  // skills only tick when inside a town
+  if(G.currentTown){
+    G.players.forEach(function(p){p.units.forEach(function(u){
+      if(!u.assignedSkill)return;
+      var sk=u.assignedSkill;
+      var skillLvl=u.skills[sk]||0;
+      // each unit checks its OWN level for that specific skill
+      var tier=getSkillTier(sk,G.currentTown,skillLvl);
+      if(!tier){
+        // show helpful message once
+        return;
+      } // skill level too low for this town
+      var gain=tier.rate*dt*(1+skillLvl*0.05);
+      G.resources[tier.res]=(G.resources[tier.res]||0)+gain;
+      grantSkXp(u,sk,gain*8); // boosted so level 10 takes ~30min active play
+    });});
+  }
   if(G.crafting){
     G.crafting.progress+=dt;
     if(G.crafting.progress>=G.crafting.total){
-      var r=RECIPES.find(function(x){return x.id===G.crafting.id;});
-      Object.keys(r.makes).forEach(function(k){G.resources[k]=(G.resources[k]||0)+r.makes[k];});
+      var allRC=[];Object.values(RECIPES).forEach(function(arr){allRC=allRC.concat(arr);});
+      var r=allRC.find(function(x){return x.id===G.crafting.id;});
+      if(!G.inventory)G.inventory={};
+      Object.keys(r.makes).forEach(function(k){
+        // gear items go to inventory, materials go to resources
+        if(ITEMS[k]){G.inventory[k]=(G.inventory[k]||0)+r.makes[k];}
+        else{G.resources[k]=(G.resources[k]||0)+r.makes[k];}
+      });
       var allU=[];G.players.forEach(function(p){p.units.forEach(function(u){allU.push(u);});});
       allU.forEach(function(u){grantSkXp(u,r.sk,20);});
       notify(r.icon+" "+r.name+" crafted!");wlog("Forge: "+r.name+" complete!","good");
@@ -904,7 +1686,12 @@ function gameTick(){
     var bar=document.getElementById('live-cb'),pct2=document.getElementById('live-cp');
     if(bar&&G.crafting){var pct=Math.round(G.crafting.progress/G.crafting.total*100);bar.style.width=pct+'%';if(pct2)pct2.textContent='Crafting... '+pct+'%';}
   }
-  renderPartyStrip();
+  // only rebuild party cards if HP/level/equip changed - prevents sprite blinking
+  var ap=G.players[G.active];
+  if(ap){
+    var ph=ap.units.map(function(u){return u.hp+'|'+u.level+'|'+u.cls;}).join(',');
+    if(ph!==window._lastPH){window._lastPH=ph;renderPartyStrip();}
+  }
   if(openSections['res'])renderResources();
   if(openSections['skills']){
     if(document.getElementById('sk-detail').classList.contains('on')&&window._curSkill)drillSkill(window._curSkill);
@@ -918,7 +1705,7 @@ function grantSkXp(u,sk,amt){
   while(u.skillXp[sk]>=need){u.skillXp[sk]-=need;u.skills[sk]++;need=(u.skills[sk]+1)*100;notify(u.name+" "+sk+" Lv"+u.skills[sk]+"!");}
 }
 function checkQuests(){
-  if(!G.quests[1].done){var hb=(G.resources.bar||0)>=1,eq=false;G.players.forEach(function(p){p.units.forEach(function(u){if(u.weapon!=="Fists")eq=true;});});if(hb&&eq)completeQuest(1);}
+  if(!G.quests[1].done){var hb=(G.resources.bronze_bar||0)>=1,eq=false;G.players.forEach(function(p){p.units.forEach(function(u){if(u.weapon!=="Fists")eq=true;});});if(hb&&eq)completeQuest(1);}
 }
 function completeQuest(idx){
   if(G.quests[idx].done)return;G.quests[idx].done=true;G.gold+=G.quests[idx].reward.gold;
@@ -949,6 +1736,98 @@ function toggleSkill(uid,sk){
 // ── BATTLE ────────────────────────────────────────────────────────────
 var BT={units:[],enemies:[],sel:null,moved:[],attacked:[],phase:"player",turn:1,loc:null};
 var bc,bctx,bhi=[],bTS=42;
+
+// ── PARTICLE SYSTEMS ──────────────────────────────────────────────────
+var PARTICLES=[];  // battle particles: damage numbers, coins, level up
+
+function spawnDamageNum(x,y,text,col){
+  PARTICLES.push({type:'dmg',x:x,y:y,vy:-1.2,life:1.0,decay:0.022,text:text,col:col||'#ff4444',size:16,alpha:1});
+}
+function spawnCoin(x,y){
+  for(var i=0;i<5;i++){
+    var angle=Math.random()*Math.PI*2;
+    var spd=1.5+Math.random()*2;
+    PARTICLES.push({type:'coin',x:x,y:y,vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd-2,
+      vy2:0,life:1.0,decay:0.025,size:7+Math.random()*4,alpha:1,rot:Math.random()*Math.PI*2});
+  }
+}
+function spawnLevelUp(x,y){
+  // burst of stars + text
+  for(var i=0;i<12;i++){
+    var angle=(i/12)*Math.PI*2;
+    var spd=2+Math.random()*2;
+    PARTICLES.push({type:'star',x:x,y:y,vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd,
+      life:1.0,decay:0.018,size:4+Math.random()*4,col:'#ffcc44',alpha:1});
+  }
+  PARTICLES.push({type:'lvlup',x:x,y:y-20,vy:-0.6,life:1.0,decay:0.012,text:'LEVEL UP!',col:'#ffcc44',size:18,alpha:1});
+}
+function spawnHeal(x,y,amt){
+  PARTICLES.push({type:'dmg',x:x,y:y,vy:-1.0,life:1.0,decay:0.020,text:'+'+amt,col:'#44ff88',size:15,alpha:1});
+}
+function spawnMiss(x,y){
+  PARTICLES.push({type:'dmg',x:x,y:y,vy:-0.8,life:1.0,decay:0.025,text:'MISS',col:'#aaaaaa',size:13,alpha:1});
+}
+
+function tickParticles(){
+  for(var i=PARTICLES.length-1;i>=0;i--){
+    var p=PARTICLES[i];
+    p.x+=p.vx||0;
+    p.y+=p.vy||0;
+    if(p.type==='coin'){p.vy+= 0.15;} // gravity on coins
+    p.life-=p.decay;
+    p.alpha=Math.max(0,p.life);
+    if(p.life<=0)PARTICLES.splice(i,1);
+  }
+}
+
+function drawParticles(ctx){
+  PARTICLES.forEach(function(p){
+    ctx.globalAlpha=p.alpha;
+    if(p.type==='dmg'||p.type==='lvlup'){
+      ctx.font='bold '+p.size+'px sans-serif';
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      // shadow
+      ctx.fillStyle='rgba(0,0,0,0.6)';
+      ctx.fillText(p.text,p.x+1.5,p.y+1.5);
+      ctx.fillStyle=p.col;
+      ctx.fillText(p.text,p.x,p.y);
+    } else if(p.type==='coin'){
+      // spinning gold coin
+      ctx.save();
+      ctx.translate(p.x,p.y);
+      ctx.rotate(p.rot||0);
+      if(p.rot!==undefined)p.rot+=0.15;
+      ctx.fillStyle='#ffcc44';
+      ctx.beginPath();ctx.ellipse(0,0,p.size/2,p.size/3,0,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#ffaa00';
+      ctx.beginPath();ctx.ellipse(0,0,p.size/3,p.size/4,0,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+    } else if(p.type==='star'){
+      ctx.fillStyle=p.col;
+      // 4-point star
+      ctx.save();ctx.translate(p.x,p.y);
+      ctx.beginPath();
+      for(var s=0;s<8;s++){
+        var r2=s%2===0?p.size:p.size*0.4;
+        var a=s*Math.PI/4;
+        s===0?ctx.moveTo(Math.cos(a)*r2,Math.sin(a)*r2):ctx.lineTo(Math.cos(a)*r2,Math.sin(a)*r2);
+      }
+      ctx.closePath();ctx.fill();ctx.restore();
+    }
+    ctx.globalAlpha=1;
+  });
+}
+
+// ── MAP ANIMATION ─────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
 function startBattle(locName){
   var loc=LOCS.find(function(l){return l.name===locName;});if(!loc)return;
   BT.loc=loc;var p=G.players[G.active];
@@ -962,9 +1841,27 @@ function startBattle(locName){
   BT.sel=null;BT.moved=[];BT.attacked=[];BT.phase="player";BT.turn=1;bhi=[];
   document.getElementById('bt-title').textContent=loc.name;
   document.getElementById('bt-turn').textContent="Turn 1 — "+p.name;
-  showScreen('s-battle');resizeBattle();clearBlog();blog(loc.name,"hi");blog(loc.desc);
+  PARTICLES=[];
+  showScreen('s-battle');resizeBattle();clearBlog();
+  blog(loc.name,"hi");blog(loc.desc);
   drawBattle();renderBBars();
+  startBattleLoop();
 }
+var battleLoopRAF=null;
+function startBattleLoop(){
+  if(battleLoopRAF)cancelAnimationFrame(battleLoopRAF);
+  function loop(){
+    if(!document.getElementById('s-battle').classList.contains('on')){
+      battleLoopRAF=null;return;
+    }
+    tickParticles();
+    drawBattle();
+    drawParticles(bctx);
+    battleLoopRAF=requestAnimationFrame(loop);
+  }
+  battleLoopRAF=requestAnimationFrame(loop);
+}
+function stopBattleLoop(){if(battleLoopRAF){cancelAnimationFrame(battleLoopRAF);battleLoopRAF=null;}}
 function getBC(){
   if(!bc){bc=document.getElementById('cv-battle');bctx=bc.getContext('2d');bctx.imageSmoothingEnabled=false;bc.addEventListener('click',onBClick);}
 }
@@ -1014,7 +1911,28 @@ function onBClick(e){
   var mx=Math.floor((e.clientX-r.left)*(bc.width/r.width)/bTS);
   var my=Math.floor((e.clientY-r.top)*(bc.height/r.height)/bTS);
   var hit=BT.units.concat(BT.enemies).find(function(u){return u.x===mx&&u.y===my&&u.hp>0;});
-  if(hit&&hit.team==="player"&&BT.moved.indexOf(hit.id)<0){BT.sel=hit;bhi=getMv(hit);drawBattle();showBInfo(hit);return;}
+
+  // handle ability targeting
+  if(BT_ABILITY.active&&BT_ABILITY.actor){
+    var actor=BT_ABILITY.actor;
+    if(BT_ABILITY.mode==='enemy_single'){
+      if(hit&&hit.team==='enemy'){
+        ABILITIES[actor.cls].use(actor,hit);
+        markAbilityUsed(actor);
+        return;
+      } else {notify("Select an enemy target!");return;}
+    } else if(BT_ABILITY.mode==='tile_aoe'){
+      ABILITIES[actor.cls].use(actor,mx,my);
+      markAbilityUsed(actor);
+      return;
+    }
+    BT_ABILITY={active:false,actor:null,mode:null};bhi=[];
+  }
+
+  if(hit&&hit.team==="player"&&BT.moved.indexOf(hit.id)<0){
+    BT.sel=hit;bhi=getMv(hit);drawBattle();showBInfo(hit);
+    renderActionBtns(hit);return;
+  }
   if(BT.sel&&hit&&hit.team==="enemy"){
     var d=Math.abs(hit.x-BT.sel.x)+Math.abs(hit.y-BT.sel.y);
     if(d<=BT.sel.rng&&BT.attacked.indexOf(BT.sel.id)<0){doAtk(BT.sel,hit);return;}
@@ -1029,8 +1947,15 @@ function inMv(u,tx,ty){return getMv(u).some(function(r){return r.x===tx&&r.y===t
 function doAtk(a,t){
   var dmg=Math.max(1,a.atk-t.def+Math.floor(Math.random()*4)-1);
   t.hp=Math.max(0,t.hp-dmg);BT.attacked.push(a.id);BT.moved.push(a.id);
+
+  // spawn damage number at target position
+  var tx=(t.x+0.5)*bTS, ty=(t.y+0.3)*bTS;
+  var numCol=t.team==='enemy'?'#ff6644':(a.team==='enemy'?'#ff3333':'#ffcc44');
+  spawnDamageNum(tx,ty,String(dmg),numCol);
+
   blog(a.name+"→"+t.name+": "+dmg+(t.hp<=0?" ☠":""),"hi");
-  if(t.hp<=0){G.gold+=t.gold||0;var allU=[];G.players.forEach(function(p){p.units.forEach(function(u){allU.push(u);});});allU.forEach(function(u){u.xp+=(t.xp||10);checkLvl(u);});blog(t.name+" down! +"+t.gold+"g","good");}
+
+  if(t.hp<=0){handleKill(a,t);}
   drawBattle();renderBBars();chkBattleEnd();
 }
 function chkBattleEnd(){
@@ -1042,16 +1967,19 @@ function chkBattleEnd(){
     var p=G.players[G.active];p.units.forEach(function(pu){var bu=BT.units.find(function(b){return b.id===pu.id;});if(bu)pu.hp=bu.hp;});
     if(BT.loc.name==="Goblin Outpost"&&!G.quests[0].done)completeQuest(0);
     notify("Victory! +"+BT.loc.reward.gold+"g");
-    setTimeout(function(){saveGame();showScreen('s-game');drawWorld();updWUI();renderHub();},1600);return;
+    setTimeout(function(){stopBattleLoop();saveGame();showScreen('s-game');drawWorld();updWUI();renderHub();},1600);return;
   }
   if(pa.length===0){
     blog("Defeat!","bad");G.players[G.active].units.forEach(function(u){u.hp=Math.max(1,Math.floor(u.mhp*.4));});
-    setTimeout(function(){saveGame();showScreen('s-game');drawWorld();updWUI();renderHub();notify("Defeated — returned to map.");},1600);
+    setTimeout(function(){stopBattleLoop();saveGame();showScreen('s-game');drawWorld();updWUI();renderHub();notify("Defeated — returned to map.");},1600);
   }
 }
 function endPTurn(){
-  if(BT.phase!=="player")return;BT.phase="enemy";BT.sel=null;bhi=[];
+  if(BT.phase!=="player")return;
+  tickCooldowns();
+  BT.phase="enemy";BT.sel=null;bhi=[];BT_ABILITY={active:false,actor:null,mode:null};
   document.getElementById('bt-turn').textContent="Enemy turn...";
+  document.getElementById('bability').innerHTML='';
   drawBattle();setTimeout(doEnemyTurn,500);
 }
 function doEnemyTurn(){
@@ -1061,6 +1989,8 @@ function doEnemyTurn(){
   function next(){
     if(i>=enemies.length){BT.phase="player";BT.moved=[];BT.attacked=[];BT.turn++;document.getElementById('bt-turn').textContent="Turn "+BT.turn+" — "+G.players[G.active].name;blog("--- Turn "+BT.turn+" ---");drawBattle();renderBBars();return;}
     var e=enemies[i++];if(!players.length){next();return;}
+    // skip stunned enemies
+    if(e.stunned&&e.stunned>0){e.stunned--;blog(e.name+" is stunned — skips turn!","good");setTimeout(next,200);return;}
     var cl=players.reduce(function(a,b){return(Math.abs(a.x-e.x)+Math.abs(a.y-e.y))<=(Math.abs(b.x-e.x)+Math.abs(b.y-e.y))?a:b;});
     for(var s=0;s<(e.mv||2);s++){
       var dx=cl.x-e.x,dy=cl.y-e.y;if(Math.abs(dx)+Math.abs(dy)<=e.rng)break;
@@ -1068,12 +1998,18 @@ function doEnemyTurn(){
       else{var ny=e.y+(dy>0?1:-1);if(!BT.units.concat(BT.enemies).find(function(u){return u.x===e.x&&u.y===ny&&u.hp>0&&u.id!==e.id;}))e.y=ny;}
     }
     var d2=Math.abs(cl.x-e.x)+Math.abs(cl.y-e.y);
-    if(d2<=e.rng){var dmg=Math.max(1,e.atk-cl.def+Math.floor(Math.random()*3));cl.hp=Math.max(0,cl.hp-dmg);var pu=G.players[G.active].units.find(function(u){return u.id===cl.id;});if(pu)pu.hp=cl.hp;blog(e.name+" hits "+cl.name+": "+dmg+(cl.hp<=0?" ☠":""),"bad");}
+    if(d2<=e.rng){
+      var dmg=Math.max(1,e.atk-cl.def+Math.floor(Math.random()*3));
+      cl.hp=Math.max(0,cl.hp-dmg);
+      var pu=G.players[G.active].units.find(function(u){return u.id===cl.id;});if(pu)pu.hp=cl.hp;
+      spawnDamageNum((cl.x+0.5)*bTS,(cl.y+0.3)*bTS,String(dmg),'#ff3333');
+      blog(e.name+" hits "+cl.name+": "+dmg+(cl.hp<=0?" ☠":""),"bad");
+    }
     drawBattle();renderBBars();setTimeout(next,380);
   }
   next();
 }
-function retreat(){var p=G.players[G.active];p.units.forEach(function(pu){var bu=BT.units.find(function(b){return b.id===pu.id;});if(bu)pu.hp=Math.max(1,bu.hp);});showScreen('s-game');drawWorld();updWUI();renderHub();}
+function retreat(){stopBattleLoop();var p=G.players[G.active];p.units.forEach(function(pu){var bu=BT.units.find(function(b){return b.id===pu.id;});if(bu)pu.hp=Math.max(1,bu.hp);});showScreen('s-game');drawWorld();updWUI();renderHub();}
 function showBInfo(u){document.getElementById('binfo').innerHTML='<strong style="color:'+CC[u.cls]+'">'+u.name+'</strong> <span class="muted">'+u.cls+'</span><br><span class="muted">HP:'+u.hp+'/'+u.mhp+' · ATK:'+u.atk+' · DEF:'+u.def+' · RNG:'+u.rng+'</span><br><span class="muted" style="font-size:11px">'+(BT.moved.indexOf(u.id)<0?'Click tile to move · ':'')+(BT.attacked.indexOf(u.id)<0?'Click enemy to attack':'')+'</span>';}
 function renderBBars(){var h="";BT.units.concat(BT.enemies).forEach(function(u){if(u.hp<=0)return;var pct=Math.round(u.hp/u.mhp*100);h+='<div class="row" style="margin-bottom:4px"><span style="width:50px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888">'+u.name+'</span><div style="flex:1;height:4px;background:#1a1a2e;border-radius:2px"><div style="height:4px;background:'+(u.team==="player"?CC[u.cls]:"#cc2222")+';border-radius:2px;width:'+pct+'%"></div></div><span class="muted" style="width:22px;text-align:right">'+u.hp+'</span></div>';});document.getElementById('bbars').innerHTML=h;}
 function blog(m,cls){var l=document.getElementById('blog');var p=document.createElement('p');if(cls)p.className=cls;p.textContent=m;l.appendChild(p);l.scrollTop=l.scrollHeight;}
